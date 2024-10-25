@@ -12,22 +12,74 @@ def tool_doc(description):
 
 class ImageProcessingToolBoxes:
 
-    def __init__(self, image_path, output_dir_path):
-        self.output_dir_path = output_dir_path
-        self.image_path = []
-        self.output_path = []
-        self.processing_log = []
+    def __init__(self, image_path, output_dir_name):
+        self.output_dir_path = output_dir_name
+        if not os.path.exists(output_dir_name):
+            os.makedirs(output_dir_name)
+        else:
+            raise FileExistsError(f"The directory '{output_dir_name}' already exists.")
 
-        self.log_file_path = self.output_dir_path + "/processing_log.txt"
-        self.image_path.append(image_path)
+        self.image_paths = []
+        self.processing_log = []
+        self.function_calls = []
+
+        self.log_file_path = os.path.join(self.output_dir_path, "processing_log.txt")
+        self.image_paths.append(image_path)
 
         self.image_name, _ = os.path.splitext(os.path.basename(image_path))
         
-        def log_processing_step(step_description):
-            with open(self.log_file_path, 'a') as log_file:
-                log_file.write(step_description + "\n")
-        
-        self.log_processing_step = log_processing_step
+    def log_processing_step(self, step_description):
+        with open(self.log_file_path, 'a') as log_file:
+            log_file.write(step_description + "\n")
+    
+    def get_all_tool_docs(self):
+        tool_docs = {}
+        for attr_name in dir(self):
+            attr = getattr(self, attr_name)
+            if callable(attr) and hasattr(attr, 'tool_doc'):
+                tool_docs[attr_name] = attr.tool_doc
+        return tool_docs
+
+    @tool_doc([
+        {
+            "name": "undo_step",
+            "description": """
+                Undo the last image processing operation by reverting to the previous state in the image history stack.
+                This function provides non-destructive editing capability by maintaining an image history stack.
+                Each time an image processing operation is applied, the previous state is saved.
+                
+                Calling undo_step() will:
+
+                - Revert the working image to the previous state
+                - Return the previous image state for display/further processing
+            """,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "reason": {
+                        "type": "str",
+                        "description": """
+                            Describe the main reasons for choosing this operation and this saturation_factor in no more than two sentences.
+                        """,
+                    },
+                },
+                "required": ["reason"]
+            }
+        }
+    ])
+    def undo_step(self, reason):
+        if len(self.image_paths) < 2:
+            raise ValueError("Cannot undo operation because there are not enough image paths.")
+        new_output_path = f"{len(self.image_paths)}_{self.image_name}_undo.png"
+        self.image_paths.append(os.path.join(self.output_dir_path, new_output_path))
+        last_function_call = self.function_calls[-1]
+        self.log_processing_step(f"Undo adjusting of `{last_function_call[0]}` of {self.image_paths[-2]}, reason: {reason}, save to: {self.image_paths[-1]}")
+        self.processing_log.append(f"Undo the last operation `{last_function_call[0]}` with parameter `{last_function_call[1]}`, generate image-{len(self.image_paths)}, reason: {reason}.")
+        self.function_calls.append(["undo_step", reason])
+
+        with Image.open(self.image_paths[-3]) as img:
+            img.save(self.image_paths[-1])
+            print(self.processing_log[-1])
 
     @tool_doc([
         {
@@ -62,31 +114,32 @@ class ImageProcessingToolBoxes:
                             - 100: Double saturation
                         """,
                     },
+                    "reason": {
+                        "type": "str",
+                        "description": """
+                            Describe the main reasons for choosing this operation and this saturation_factor in no more than two sentences.
+                        """,
+                    },
                 },
-                "required": ["saturation_factor"]
+                "required": ["saturation_factor", "reason"]
             }
         }
     ])
-    def adjust_saturation(self, saturation_factor):
-        """
-        Adjust the saturation of an input image using Pillow.
-        
-        Args:
-            image_path (str): Path to the input image.
-            saturation_factor (float): Factor to adjust saturation. 
-                Values > 1 increase saturation, values < 1 decrease saturation.
-            output_path (str): Path to save the adjusted image.
-        """
-        new_output_path = f"{len(self.output_path)}_{self.image_name}_saturation_{saturation_factor}.png"
-        self.output_path.append(os.path.join(self.output_dir_path, new_output_path))
-        self.log_processing_step(f"Adjusting saturation of {self.image_path[-1]} to {saturation_factor}, save to {self.output_path[-1]}")
+    def adjust_saturation(self, saturation_factor, reason):
+        new_output_path = f"{len(self.image_paths)}_{self.image_name}_saturation_{saturation_factor}.png"
+        self.image_paths.append(os.path.join(self.output_dir_path, new_output_path))
+        self.log_processing_step(f"Adjusting saturation of {self.image_paths[-2]} to {saturation_factor}, reason: {reason}, save to: {self.image_paths[-1]}")
+        self.processing_log.append(f"Adjusting saturation of image-{len(self.image_paths)-1} to {saturation_factor}, generate image-{len(self.image_paths)}, reason: {reason}.")
+        self.function_calls.append(["adjust_saturation", saturation_factor, reason])
 
         # Open an image file
-        with Image.open(self.image_path[-1]) as img:
+        with Image.open(self.image_paths[-2]) as img:
             # Enhance the image's saturation
             enhancer = ImageEnhance.Color(img)
             img_enhanced = enhancer.enhance(saturation_factor)
             
             # Save the adjusted image
-            img_enhanced.save(self.output_path[-1])
-            print(f"The processed image has been saved as '{self.output_path[-1]}'")
+            img_enhanced.save(self.image_paths[-1])
+            print(self.processing_log[-1])
+
+
