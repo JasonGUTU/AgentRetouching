@@ -546,7 +546,7 @@ class ImageProcessingToolBoxes:
             img_adjusted = Image.fromarray(img_gamma_corrected)
             img_adjusted.save(self.image_paths[-1])
             print(self.processing_log[-1])
-            
+
     def adjust_whites(self, white_factor, reason):
         new_output_path = f"{len(self.image_paths)}_{self.image_name}_whites_{white_factor}.png"
         self.image_paths.append(os.path.join(self.output_dir_path, new_output_path))
@@ -582,6 +582,7 @@ class ImageProcessingToolBoxes:
             img_adjusted.save(self.image_paths[-1])
             print(self.processing_log[-1])
 
+    ## TODO: Add more operations, such as Color temperature and tone
     
 
 
