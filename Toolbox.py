@@ -1,5 +1,5 @@
 import os
-
+from typing import List, Callable
 from PIL import Image, ImageEnhance
 
 
@@ -33,12 +33,54 @@ class ImageProcessingToolBoxes:
             log_file.write(step_description + "\n")
     
     def get_all_tool_docs(self):
+        tool_docs = []
+        for attr_name in dir(self):
+            attr = getattr(self, attr_name)
+            if callable(attr) and hasattr(attr, 'tool_doc'):
+                tool_docs += attr.tool_doc
+        return tool_docs
+    
+    def get_tool_docs(self, tools: List[Callable]):
+        tool_docs = []
+        for func in tools:
+            if callable(func) and hasattr(func, 'tool_doc'):
+                tool_docs += func.tool_doc
+        return tool_docs
+    
+    def get_function_mapping(self):
         tool_docs = {}
         for attr_name in dir(self):
             attr = getattr(self, attr_name)
             if callable(attr) and hasattr(attr, 'tool_doc'):
-                tool_docs[attr_name] = attr.tool_doc
+                tool_docs[attr.tool_doc[0]["name"]] = attr.__name__
         return tool_docs
+    
+    @tool_doc([
+        {
+            "name": "func_to_return_responses",
+            "description": """
+                A function for GPT to structure and return its responses. Instead of providing responses in the content, 
+                GPT should use this function to encapsulate all responses within the response parameter. This ensures a 
+                consistent format for response handling and processing.
+            """,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "response": {
+                        "type": "string",
+                        "description": """
+                            The complete response content from GPT. This should contain all information, explanations, 
+                            or answers that GPT wants to communicate. The content should be properly formatted with 
+                            appropriate line breaks and spacing for readability. Markdown formatting is supported.
+                        """
+                    }
+                },
+                "required": ["response"]
+            }
+        }
+    ])
+    def func_to_return_responses(self, response):
+        
 
     @tool_doc([
         {
@@ -57,9 +99,9 @@ class ImageProcessingToolBoxes:
                 "type": "object",
                 "properties": {
                     "reason": {
-                        "type": "str",
+                        "type": "string",
                         "description": """
-                            Describe the main reasons for choosing this operation and this saturation_factor in no more than two sentences.
+                            Describe the main reasons for choosing this operation in no more than two sentences.
                         """,
                     },
                 },
@@ -115,7 +157,7 @@ class ImageProcessingToolBoxes:
                         """,
                     },
                     "reason": {
-                        "type": "str",
+                        "type": "string",
                         "description": """
                             Describe the main reasons for choosing this operation and this saturation_factor in no more than two sentences.
                         """,
