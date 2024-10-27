@@ -17,3 +17,10 @@ dist/
 
 # macOS
 .DS_Store
+.ipynb_checkpoints/
+.png
+.jpg
+.jpeg
+.webp
+.gif
+.bmp

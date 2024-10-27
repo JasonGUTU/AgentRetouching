@@ -1,9 +1,12 @@
 import os
 from typing import List, Callable
 import numpy as np
+from Levenshtein import distance
 
 from PIL import Image, ImageEnhance
 import skimage
+
+from Utils import pretty_print_content
 
 def tool_doc(description):
     def decorator(func):
@@ -14,27 +17,53 @@ def tool_doc(description):
 
 class ImageProcessingToolBoxes:
 
-    def __init__(self, image_path, output_dir_name):
+    def __init__(self, image_path, output_dir_name, debug=False):  # TODO: 加 高分辨率图片
         self.output_dir_path = output_dir_name
         if not os.path.exists(output_dir_name):
             os.makedirs(output_dir_name)
         else:
-            raise FileExistsError(f"The directory '{output_dir_name}' already exists.")
+            if debug:
+                pass
+            else:
+                raise FileExistsError(f"The directory '{output_dir_name}' already exists.")
 
         self.image_paths = []
         self.processing_log = []
         self.function_calls = []
+        self.history_messages = []
+
+        self.processing_plan = []
 
         self.log_file_path = os.path.join(self.output_dir_path, "processing_log.txt")
         self.image_paths.append(image_path)
 
         self.image_name, _ = os.path.splitext(os.path.basename(image_path))
+
+    def get_current_image_path(self):
+        """Return the path of the most recently processed image
+        This method is useful for retrieving the current state of the image after processing"""
+        return self.image_paths[-1]
+    
+    def check_history_messages(self):
+        """
+        Print the history messages in a formatted manner.
+        This method is useful for reviewing the sequence of operations performed on the image.
+        """
+        pretty_print_content(self.history_messages)
         
     def log_processing_step(self, step_description):
+        """
+        Log a processing step to the log file.
+        This method is useful for documenting the sequence of operations performed on the image.
+        """
         with open(self.log_file_path, 'a') as log_file:
             log_file.write(step_description + "\n")
     
     def get_all_tool_docs(self):
+        """
+        Get all tool documentation.
+        This method is useful for retrieving the documentation of all available tools.
+        """
         tool_docs = []
         for attr_name in dir(self):
             attr = getattr(self, attr_name)
@@ -42,14 +71,20 @@ class ImageProcessingToolBoxes:
                 tool_docs += attr.tool_doc
         return tool_docs
     
-    def get_tool_docs(self, tools: List[Callable]):
+    @staticmethod
+    def get_tool_docs(tools: List[Callable]):
+        
         tool_docs = []
         for func in tools:
             if callable(func) and hasattr(func, 'tool_doc'):
-                tool_docs += func.tool_doc
+                tool_docs += [{"type": "function", "function": func.tool_doc[0]}] 
         return tool_docs
     
     def get_function_mapping(self):
+        """
+        Get a mapping of function names to their corresponding method names.
+        This method is useful for retrieving the mapping of function names to their corresponding methods.
+        """
         tool_docs = {}
         for attr_name in dir(self):
             attr = getattr(self, attr_name)
@@ -57,6 +92,23 @@ class ImageProcessingToolBoxes:
                 tool_docs[attr.tool_doc[0]["name"]] = attr.__name__
         return tool_docs
     
+    def get_function_names(self):
+        """
+        Get a list of function names excluding the special functions.
+        This method is useful for retrieving the list of function names excluding the special functions.
+        """
+        function_names = list(self.get_function_mapping().keys())
+        function_names = [name for name in function_names if name not in ['func_to_return_responses', 'func_to_get_plan', 'undo_step']]
+        return function_names.__str__()
+
+    def finish_current_plan(self):
+        """
+        Finish the most first processing plan.
+        This method is useful for finishing the most first processing plan.
+        """
+        if self.processing_plan:
+            self.processing_plan = self.processing_plan[1:]
+
     @tool_doc([
         {
             "name": "func_to_return_responses",
@@ -75,14 +127,71 @@ class ImageProcessingToolBoxes:
                             or answers that GPT wants to communicate. The content should be properly formatted with 
                             appropriate line breaks and spacing for readability. Markdown formatting is supported.
                         """
-                    }
+                    },
                 },
                 "required": ["response"]
             }
         }
     ])
     def func_to_return_responses(self, response):
-        pass
+        self.history_messages.append({"role": "assistant", "content": response})
+        print(f"\n\n`func_to_return_responses`, response: \n\n{response}")
+
+    @tool_doc([
+        {
+            "name": "func_to_get_plan",
+            "description": """
+                A function for GPT to generate and structure a retouching plan based on the user's instructions and the analysis provided in the historical information. 
+                GPT should carefully select and arrange the available image retouching functions, considering the sequence in which they are applied, as the order is crucial for the overall outcome. 
+                The response should be a Python-readable list of function names in string format, maintaining the exact order chosen for the retouching plan. 
+                The available functions are provided in the user's instruction. Example response format: "['adjust_blacks', 'adjust_brightness', 'adjust_contrast', 'adjust_gamma', 'adjust_highlights', 'adjust_saturation', 'adjust_shadows', 'adjust_whites']".
+            """,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "response": {
+                        "type": "string",
+                        "description": """
+                            The full retouching plan, represented as a Python-readable list of function names in string format. The order of the functions is crucial, and each function should be listed 
+                            in the sequence chosen by GPT based on the analysis and the user's instructions.
+                        """
+                    }
+                },
+                "required": ["response"]
+            }
+        }
+    ])
+    def func_to_get_plan(self, response):
+        self.history_messages.append({"role": "assistant", "content": f"The retouching plan is: {response}"})
+        print(f"\n\n`func_to_get_plan`, response: \n\n{response}")
+
+        # Try to parse the response as a list
+        try:
+            plan_list = eval(response)
+        except:
+            # If parsing fails, try using string processing method
+            plan_list = response.strip("[]").replace("'", "").replace('"', "").split(",")
+            plan_list = [item.strip() for item in plan_list]
+
+        # Get all possible function names
+        valid_functions = set(self.get_function_mapping().keys())
+
+        # Filter and replace invalid function names
+        filtered_plan = []
+        for func in plan_list:
+            if func in valid_functions:
+                filtered_plan.append(func)
+            else:
+                # Find the most similar valid function name
+                most_similar = max(valid_functions, key=lambda x: self.similarity(func, x))
+                filtered_plan.append(most_similar)
+
+        print(f"Plan after parsing: {filtered_plan}")
+        self.processing_plan = filtered_plan
+
+    def similarity(self, a, b):
+        max_len = max(len(a), len(b))
+        return 1 - distance(a, b) / max_len
 
     @tool_doc([
         {
@@ -125,7 +234,6 @@ class ImageProcessingToolBoxes:
             img.save(self.image_paths[-1])
             print(self.processing_log[-1])
 
-    # Change by Keda@2024/10
     @tool_doc([
         {
             "name": "adjust_saturation",
@@ -149,7 +257,7 @@ class ImageProcessingToolBoxes:
                 "type": "object",
                 "properties": {
                     "saturation_factor": {
-                        "type": "int",
+                        "type": "integer",
                         "description": """
                             Controls the intensity of the saturation adjustment, similar to Lightroom's Saturation slider:
                             - -100: Completely desaturated (grayscale)
@@ -176,6 +284,11 @@ class ImageProcessingToolBoxes:
         self.log_processing_step(f"Adjusting saturation of {self.image_paths[-2]} to {saturation_factor}, reason: {reason}, save to: {self.image_paths[-1]}")
         self.processing_log.append(f"Adjusting saturation of image-{len(self.image_paths)-1} to {saturation_factor}, generate image-{len(self.image_paths)}, reason: {reason}.")
         self.function_calls.append(["adjust_saturation", saturation_factor, reason])
+        self.history_messages.append({"role": "assistant", "content": f"Adjusting saturation of image-{len(self.image_paths)-1} to {saturation_factor}, reason: {reason}."})
+
+        # 将saturation_factor从[-100, 100]映射到[0, 2]的范围
+        saturation_factor = (saturation_factor + 100) / 100
+        # TODO: 拟合之后要改这个
 
         # Open an image file
         with Image.open(self.image_paths[-2]) as img:
@@ -207,7 +320,7 @@ class ImageProcessingToolBoxes:
                 "type": "object",
                 "properties": {
                     "shadow_factor": {
-                        "type": "int",
+                        "type": "integer",
                         "description": """
                             Controls the intensity of shadow adjustment, similar to Lightroom's Shadows slider:
                             - -100: Completely lightened shadows (maximum brightness)
@@ -218,7 +331,7 @@ class ImageProcessingToolBoxes:
                         """,
                     },
                     "reason": {
-                        "type": "str",
+                        "type": "string",
                         "description": """
                             Describe the main reasons for choosing this operation and this shadow_factor in no more than two sentences.
                         """,
@@ -234,6 +347,7 @@ class ImageProcessingToolBoxes:
         self.log_processing_step(f"Adjusting shadows of {self.image_paths[-2]} with factor {shadow_factor}, reason: {reason}, save to: {self.image_paths[-1]}")
         self.processing_log.append(f"Adjusting shadows of image-{len(self.image_paths)-1} with factor {shadow_factor}, generate image-{len(self.image_paths)}, reason: {reason}.")
         self.function_calls.append(["adjust_shadows", shadow_factor, reason])
+        self.history_messages.append({"role": "assistant", "content": f"Adjusting shadows of image-{len(self.image_paths)-1} with factor {shadow_factor}, reason: {reason}."})
 
         # Open an image file
         with Image.open(self.image_paths[-2]) as img:
@@ -267,7 +381,7 @@ class ImageProcessingToolBoxes:
                 "type": "object",
                 "properties": {
                     "highlight_factor": {
-                        "type": "int",
+                        "type": "integer",
                         "description": """
                             Controls the intensity of highlight adjustment, similar to Lightroom's Highlights slider:
                             - -100: Completely reduced highlights (muted highlights)
@@ -278,7 +392,7 @@ class ImageProcessingToolBoxes:
                         """,
                     },
                     "reason": {
-                        "type": "str",
+                        "type": "string",
                         "description": """
                             Describe the main reasons for choosing this operation and this highlight_factor in no more than two sentences.
                         """,
@@ -294,7 +408,7 @@ class ImageProcessingToolBoxes:
         self.log_processing_step(f"Adjusting highlights of {self.image_paths[-2]} with factor {highlight_factor}, reason: {reason}, save to: {self.image_paths[-1]}")
         self.processing_log.append(f"Adjusting highlights of image-{len(self.image_paths)-1} with factor {highlight_factor}, generate image-{len(self.image_paths)}, reason: {reason}.")
         self.function_calls.append(["adjust_highlights", highlight_factor, reason])
-
+        self.history_messages.append({"role": "assistant", "content": f"Adjusting highlights of image-{len(self.image_paths)-1} with factor {highlight_factor}, generate image-{len(self.image_paths)}, reason: {reason}."})
 
         with Image.open(self.image_paths[-2]) as img:
             grayscale = img.convert("L")
@@ -325,7 +439,7 @@ class ImageProcessingToolBoxes:
                 "type": "object",
                 "properties": {
                     "contrast_factor": {
-                        "type": "int",
+                        "type": "integer",
                         "description": """
                             Controls the intensity of contrast adjustment, similar to Lightroom's Contrast slider:
                             - -100: Minimum contrast (muted tones)
@@ -336,7 +450,7 @@ class ImageProcessingToolBoxes:
                         """,
                     },
                     "reason": {
-                        "type": "str",
+                        "type": "string",
                         "description": """
                             Describe the main reasons for choosing this operation and this contrast_factor in no more than two sentences.
                         """,
@@ -352,6 +466,7 @@ class ImageProcessingToolBoxes:
         self.log_processing_step(f"Adjusting contrast of {self.image_paths[-2]} with factor {contrast_factor}, reason: {reason}, save to: {self.image_paths[-1]}")
         self.processing_log.append(f"Adjusting contrast of image-{len(self.image_paths)-1} with factor {contrast_factor}, generate image-{len(self.image_paths)}, reason: {reason}.")
         self.function_calls.append(["adjust_contrast", contrast_factor, reason])
+        self.history_messages.append({"role": "assistant", "content": f"Adjusting contrast of image-{len(self.image_paths)-1} with factor {contrast_factor}, generate image-{len(self.image_paths)}, reason: {reason}."})
 
         with Image.open(self.image_paths[-2]) as img:
             # Map contrast_factor range to a multiplier effect
@@ -384,7 +499,7 @@ class ImageProcessingToolBoxes:
                 "type": "object",
                 "properties": {
                     "brightness_factor": {
-                        "type": "int",
+                        "type": "integer",
                         "description": """
                             Controls the intensity of brightness adjustment, similar to Lightroom's Brightness slider:
                             - -100: Minimum brightness (almost black)
@@ -395,7 +510,7 @@ class ImageProcessingToolBoxes:
                         """,
                     },
                     "reason": {
-                        "type": "str",
+                        "type": "string",
                         "description": """
                             Describe the main reasons for choosing this operation and this brightness_factor in no more than two sentences.
                         """,
@@ -411,6 +526,7 @@ class ImageProcessingToolBoxes:
         self.log_processing_step(f"Adjusting brightness of {self.image_paths[-2]} with factor {brightness_factor}, reason: {reason}, save to: {self.image_paths[-1]}")
         self.processing_log.append(f"Adjusting brightness of image-{len(self.image_paths)-1} with factor {brightness_factor}, generate image-{len(self.image_paths)}, reason: {reason}.")
         self.function_calls.append(["adjust_brightness", brightness_factor, reason])
+        self.history_messages.append({"role": "assistant", "content": f"Adjusting brightness of image-{len(self.image_paths)-1} with factor {brightness_factor}, generate image-{len(self.image_paths)}, reason: {reason}."})
 
         # Open an image file
         with Image.open(self.image_paths[-2]) as img:
@@ -444,7 +560,7 @@ class ImageProcessingToolBoxes:
                 "type": "object",
                 "properties": {
                     "black_factor": {
-                        "type": "int",
+                        "type": "integer",
                         "description": """
                             Controls the intensity of black adjustment, similar to Lightroom's Blacks slider:
                             - -100: Minimum black level (lightened shadows)
@@ -455,7 +571,7 @@ class ImageProcessingToolBoxes:
                         """,
                     },
                     "reason": {
-                        "type": "str",
+                        "type": "string",
                         "description": """
                             Describe the main reasons for choosing this operation and this black_factor in no more than two sentences.
                         """,
@@ -468,13 +584,10 @@ class ImageProcessingToolBoxes:
     def adjust_blacks(self, black_factor, reason):
         new_output_path = f"{len(self.image_paths)}_{self.image_name}_blacks_{black_factor}.png"
         self.image_paths.append(os.path.join(self.output_dir_path, new_output_path))
-        self.log_processing_step(
-            f"Adjusting blacks of {self.image_paths[-2]} with factor {black_factor}, reason: {reason}, save to: {self.image_paths[-1]}"
-        )
-        self.processing_log.append(
-            f"Adjusting blacks of image-{len(self.image_paths)-1} with factor {black_factor}, generate image-{len(self.image_paths)}, reason: {reason}."
-        )
+        self.log_processing_step(f"Adjusting blacks of {self.image_paths[-2]} with factor {black_factor}, reason: {reason}, save to: {self.image_paths[-1]}")
+        self.processing_log.append(f"Adjusting blacks of image-{len(self.image_paths)-1} with factor {black_factor}, generate image-{len(self.image_paths)}, reason: {reason}.")
         self.function_calls.append(["adjust_blacks", black_factor, reason])
+        self.history_messages.append({"role": "assistant", "content": f"Adjusting blacks of image-{len(self.image_paths)-1} with factor {black_factor}, generate image-{len(self.image_paths)}, reason: {reason}."})
 
         # Open the image and convert to grayscale to identify shadow areas
         with Image.open(self.image_paths[-2]) as img:
@@ -524,13 +637,13 @@ class ImageProcessingToolBoxes:
                         "type": "float",
                         "description": """
                             Controls the intensity of gamma adjustment, similar to gamma sliders in photo editing software:
-                            - < 1: Darkens the image
+                            - < 1 and > 0: Darkens the image
                             - 1: Original gamma level
                             - > 1: Brightens the image
                         """,
                     },
                     "reason": {
-                        "type": "str",
+                        "type": "string",
                         "description": """
                             Describe the main reasons for choosing this operation and this gamma_factor in no more than two sentences.
                         """,
@@ -543,13 +656,10 @@ class ImageProcessingToolBoxes:
     def adjust_gamma(self, gamma_factor, reason):
         new_output_path = f"{len(self.image_paths)}_{self.image_name}_gamma_{gamma_factor}.png"
         self.image_paths.append(os.path.join(self.output_dir_path, new_output_path))
-        self.log_processing_step(
-            f"Adjusting gamma of {self.image_paths[-2]} with factor {gamma_factor}, reason: {reason}, save to: {self.image_paths[-1]}"
-        )
-        self.processing_log.append(
-            f"Adjusting gamma of image-{len(self.image_paths)-1} with factor {gamma_factor}, generate image-{len(self.image_paths)}, reason: {reason}."
-        )
+        self.log_processing_step(f"Adjusting gamma of {self.image_paths[-2]} with factor {gamma_factor}, reason: {reason}, save to: {self.image_paths[-1]}")
+        self.processing_log.append(f"Adjusting gamma of image-{len(self.image_paths)-1} with factor {gamma_factor}, generate image-{len(self.image_paths)}, reason: {reason}.")
         self.function_calls.append(["adjust_gamma", gamma_factor, reason])
+        self.history_messages.append({"role": "assistant", "content": f"Adjusting gamma of image-{len(self.image_paths)-1} with factor {gamma_factor}, generate image-{len(self.image_paths)}, reason: {reason}."})
 
         # Open and adjust the image's gamma
         with Image.open(self.image_paths[-2]) as img:
@@ -596,7 +706,7 @@ class ImageProcessingToolBoxes:
                         """,
                     },
                     "reason": {
-                        "type": "str",
+                        "type": "string",
                         "description": """
                             Describe the main reasons for choosing this operation and this white_factor in no more than two sentences.
                         """,
@@ -609,13 +719,10 @@ class ImageProcessingToolBoxes:
     def adjust_whites(self, white_factor, reason):
         new_output_path = f"{len(self.image_paths)}_{self.image_name}_whites_{white_factor}.png"
         self.image_paths.append(os.path.join(self.output_dir_path, new_output_path))
-        self.log_processing_step(
-            f"Adjusting whites of {self.image_paths[-2]} with factor {white_factor}, reason: {reason}, save to: {self.image_paths[-1]}"
-        )
-        self.processing_log.append(
-            f"Adjusting whites of image-{len(self.image_paths)-1} with factor {white_factor}, generate image-{len(self.image_paths)}, reason: {reason}."
-        )
+        self.log_processing_step(f"Adjusting whites of {self.image_paths[-2]} with factor {white_factor}, reason: {reason}, save to: {self.image_paths[-1]}")
+        self.processing_log.append(f"Adjusting whites of image-{len(self.image_paths)-1} with factor {white_factor}, generate image-{len(self.image_paths)}, reason: {reason}.")
         self.function_calls.append(["adjust_whites", white_factor, reason])
+        self.history_messages.append({"role": "assistant", "content": f"Adjusting whites of image-{len(self.image_paths)-1} with factor {white_factor}, generate image-{len(self.image_paths)}, reason: {reason}."})
 
         # Open the image and convert to grayscale to identify highlight areas
         with Image.open(self.image_paths[-2]) as img:

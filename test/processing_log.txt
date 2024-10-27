@@ -1,0 +1,5 @@
+Adjusting brightness of ./atest.png with factor 50, reason: Increasing the brightness will reveal more details in the dog's features and the car's interior, enhancing clarity and focus while bringing life to the subdued tones of the original image., save to: test/1_atest_brightness_50.png
+Adjusting shadows of test/1_atest_brightness_50.png with factor -60, reason: Reducing shadows will reveal more details in the darker areas, such as the dog's face and the car interior, enhancing clarity and focus. This adjustment will create a more balanced exposure, making the image more visually engaging., save to: test/2_atest_shadows_-60.png
+Adjusting brightness of test/2_atest_shadows_-60.png with factor 100, reason: yes, save to: test/3_atest_brightness_100.png
+Adjusting brightness of ./atest.png with factor 100, reason: yes, save to: test/1_atest_brightness_100.png
+Adjusting brightness of test/1_atest_brightness_100.png with factor 200, reason: yes, save to: test/2_atest_brightness_200.png
