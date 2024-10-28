@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+dist/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.env
+
+# macOS
+.DS_Store
+.ipynb_checkpoints/
+.png
+.jpg
+.jpeg
+.webp
+.gif
+.bmp
