@@ -3,10 +3,11 @@ from typing import List, Callable
 import numpy as np
 from Levenshtein import distance
 
-from PIL import Image, ImageEnhance
-import skimage
+from PIL import Image, ImageEnhance, ExifTags
+from ImageProcessing import *
 
 from Utils import pretty_print_content
+
 
 def tool_doc(description):
     def decorator(func):
@@ -17,8 +18,10 @@ def tool_doc(description):
 
 class ImageProcessingToolBoxes:
 
-    def __init__(self, image_path, output_dir_name, debug=False):  # TODO: 加 高分辨率图片
+    def __init__(self, image_path, output_dir_name, debug=False, save_high_resolution=True, extension_name="png"):
         self.output_dir_path = output_dir_name
+        self.extension_name = extension_name
+        self.save_high_resolution = save_high_resolution
         if not os.path.exists(output_dir_name):
             os.makedirs(output_dir_name)
         else:
@@ -27,17 +30,62 @@ class ImageProcessingToolBoxes:
             else:
                 raise FileExistsError(f"The directory '{output_dir_name}' already exists.")
 
-        self.image_paths = []
-        self.processing_log = []
-        self.function_calls = []
-        self.history_messages = []
+        self.image_paths = []  # List of image paths for OpenAI to view
+        self.hr_image_paths = []  # List of high-resolution image paths for OpenAI to view
+        self.processing_log = []  # Log of processing steps
+        self.function_calls = []  # Record of function calls
+        self.history_messages = []  # Record of conversation history
 
         self.processing_plan = []
 
         self.log_file_path = os.path.join(self.output_dir_path, "processing_log.txt")
-        self.image_paths.append(image_path)
-
         self.image_name, _ = os.path.splitext(os.path.basename(image_path))
+
+        self.plan_status = ""
+        self.satisfactory_status = False
+
+        # Load original image and downsample
+        with Image.open(image_path) as img:
+            width, height = img.size
+            scale_factor = min(512/width, 512/height)
+            new_width, new_height = int(width * scale_factor), int(height * scale_factor)
+            img_resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+            # 确保图片方向正确并保存
+            if hasattr(img, '_getexif'): # 检查是否有EXIF数据
+                try:
+                    for orientation in ExifTags.TAGS.keys():
+                        if ExifTags.TAGS[orientation]=='Orientation':
+                            break
+                    exif=dict(img._getexif().items())
+
+                    if orientation in exif:
+                        if exif[orientation] == 3:
+                            img_resized = img_resized.rotate(180, expand=True)
+                            img = img.rotate(180, expand=True)
+                        elif exif[orientation] == 6:
+                            img_resized = img_resized.rotate(270, expand=True)
+                            img = img.rotate(270, expand=True)
+                        elif exif[orientation] == 8:
+                            img_resized = img_resized.rotate(90, expand=True)
+                            img = img.rotate(90, expand=True)
+                except (AttributeError, KeyError, IndexError):
+                    pass # 处理没有EXIF的情况
+
+            resized_path = os.path.join(self.output_dir_path, f"0_{self.image_name}_resized.{self.extension_name}")
+            img_resized.save(resized_path)
+            self.image_paths.append(resized_path)
+
+            hr_path = os.path.join(self.output_dir_path, f"0_{self.image_name}_hr.{self.extension_name}")
+            self.hr_image_paths.append(hr_path)
+            if self.save_high_resolution:
+                img.save(hr_path)
+
+    def set_plan_status(self, status):
+        self.plan_status = status
+
+    def set_satisfactory_status(self, status):
+        self.satisfactory_status = status
 
     def get_current_image_path(self):
         """Return the path of the most recently processed image
@@ -98,16 +146,22 @@ class ImageProcessingToolBoxes:
         This method is useful for retrieving the list of function names excluding the special functions.
         """
         function_names = list(self.get_function_mapping().keys())
-        function_names = [name for name in function_names if name not in ['func_to_return_responses', 'func_to_get_plan', 'undo_step']]
+        function_names = [name for name in function_names if name not in ['func_to_return_responses', 'func_to_get_plan', 'undo_step', 'satisfactory']]
         return function_names.__str__()
 
-    def finish_current_plan(self):
-        """
-        Finish the most first processing plan.
-        This method is useful for finishing the most first processing plan.
-        """
-        if self.processing_plan:
-            self.processing_plan = self.processing_plan[1:]
+    def get_function_short_description(self):
+        function_names = list(self.get_function_mapping().keys())
+        function_names = [name for name in function_names if name not in ['func_to_return_responses', 'func_to_get_plan', 'undo_step']]
+
+        function_short_descriptions = []
+
+        for name in function_names:
+            attr = getattr(self, name)
+            if callable(attr) and attr.__doc__:
+                doc = attr.__doc__
+                function_short_descriptions.append(f"{doc}")
+        
+        return "\n".join(function_short_descriptions)
 
     @tool_doc([
         {
@@ -193,26 +247,75 @@ class ImageProcessingToolBoxes:
         max_len = max(len(a), len(b))
         return 1 - distance(a, b) / max_len
 
+    def parse_lr_path_to_hr_path(self, lr_path):
+        """ Convert low resolution path to high resolution path """
+        base_name = os.path.splitext(os.path.basename(lr_path))[0]
+        hr_name = base_name + "_hr" + os.path.splitext(lr_path)[1]
+        hr_path = os.path.join(os.path.dirname(lr_path), hr_name)
+        return hr_path
+
+    def finish_current_plan(self):
+        """
+        Finish the most first processing plan.
+        This method is useful for finishing the most first processing plan.
+        """
+        self.plan_status = "finished"
+        if self.processing_plan:
+            self.processing_plan = self.processing_plan[1:]
+
     @tool_doc([
         {
-            "name": "undo_step",
-            "description": """
-                Undo the last image processing operation by reverting to the previous state in the image history stack.
-                This function provides non-destructive editing capability by maintaining an image history stack.
-                Each time an image processing operation is applied, the previous state is saved.
-                
-                Calling undo_step() will:
-
-                - Revert the working image to the previous state
-                - Return the previous image state for display/further processing
-            """,
+            "name": "satisfactory",
+            "description": (
+                "Confirm the current adjustment is satisfactory.\n"
+                "Proceed to the next image processing operation after confirming the current adjustment is satisfactory.\n"
+                "This function maintains the workflow progression while preserving the successful adjustment in the image history.\n"
+                "The current state becomes a confirmed checkpoint in the editing process.\n"
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "reason": {
                         "type": "string",
                         "description": """
-                            Describe the main reasons for choosing this operation in no more than two sentences.
+                            Describe the main reasons for choosing this operation in no more than three sentences.
+                        """,
+                    },
+                },
+                "required": ["reason"]
+            }
+        }
+    ])
+    def satisfactory(self, reason):
+        last_function_call = self.function_calls[-1]
+        self.log_processing_step(f"Confirm the adjustment `{last_function_call[0]}` with parameter `{last_function_call[1]}` is satisfactory, reason: {reason}.")
+        self.processing_log.append(f"Confirm the adjustment `{last_function_call[0]}` with parameter `{last_function_call[1]}` is satisfactory, reason: {reason}.")
+        self.function_calls.append(["satisfactory", reason])
+        self.history_messages.append({"role": "assistant", "content": f"Confirm the adjustment `{last_function_call[0]}` with parameter `{last_function_call[1]}` is satisfactory, reason: {reason}."})
+        print(self.processing_log[-1])
+
+        self.set_satisfactory_status(True)
+
+    @tool_doc([
+        {
+            "name": "undo_step",
+            "description": (
+                "Undo the last image processing operation by reverting to the previous state in the image history stack.\n"
+                "This function provides non-destructive editing capability by maintaining an image history stack.\n"
+                "Each time an image processing operation is applied, the previous state is saved.\n"
+                
+                "Calling undo_step() will:\n"
+
+                "- Revert the working image to the previous state\n"
+                "- Return the previous image state for display/further processing\n"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "reason": {
+                        "type": "string",
+                        "description": """
+                            Describe the main reasons for choosing this operation in no more than three sentences.
                         """,
                     },
                 },
@@ -223,54 +326,60 @@ class ImageProcessingToolBoxes:
     def undo_step(self, reason):
         if len(self.image_paths) < 2:
             raise ValueError("Cannot undo operation because there are not enough image paths.")
-        new_output_path = f"{len(self.image_paths)}_{self.image_name}_undo.png"
+        new_output_path = f"{len(self.image_paths)}_{self.image_name}_undo.{self.extension_name}"
         self.image_paths.append(os.path.join(self.output_dir_path, new_output_path))
+        self.hr_image_paths.append(os.path.join(self.output_dir_path, self.parse_lr_path_to_hr_path(new_output_path)))
+
         last_function_call = self.function_calls[-1]
         self.log_processing_step(f"Undo adjusting of `{last_function_call[0]}` of {self.image_paths[-2]}, reason: {reason}, save to: {self.image_paths[-1]}")
         self.processing_log.append(f"Undo the last operation `{last_function_call[0]}` with parameter `{last_function_call[1]}`, generate image-{len(self.image_paths)}, reason: {reason}.")
         self.function_calls.append(["undo_step", reason])
+        self.history_messages.append({"role": "assistant", "content": f"Undo the last operation `{last_function_call[0]}` with parameter `{last_function_call[1]}`, reason: {reason}."})
+        print(self.processing_log[-1])
 
         with Image.open(self.image_paths[-3]) as img:
             img.save(self.image_paths[-1])
-            print(self.processing_log[-1])
+        
+        if self.save_high_resolution:
+            with Image.open(self.hr_image_paths[-3]) as img:
+                img.save(self.hr_image_paths[-1])   
 
     @tool_doc([
         {
             "name": "adjust_saturation",
-            "description": """
-                Adjust the saturation of an input image by modifying the intensity of the colors while preserving luminance.
+            "description": (
+                "Adjust the saturation of an input image by modifying the intensity of the colors while preserving luminance.\n"
+                "Saturation represents the intensity or purity of colors in an image. Increasing saturation makes colors more vivid "
+                "and intense, while decreasing it moves colors toward grayscale. This adjustment is particularly useful for:\n"
     
-                Saturation represents the intensity or purity of colors in an image. Increasing saturation makes colors more vivid 
-                and intense, while decreasing it moves colors toward grayscale. This adjustment is particularly useful for:
+                "- Enhancing the vibrancy of sunrise/sunset photos\n"
+                "- Making natural elements like foliage and flowers more striking\n"
+                "- Adding punch to flat or hazy images\n"
+                "- Creating artistic effects through dramatic color intensification\n"
+                "- Toning down overly colorful scenes\n"
+                "- Achieving a more muted, cinematic look\n"
     
-                - Enhancing the vibrancy of sunrise/sunset photos
-                - Making natural elements like foliage and flowers more striking
-                - Adding punch to flat or hazy images
-                - Creating artistic effects through dramatic color intensification
-                - Toning down overly colorful scenes
-                - Achieving a more muted, cinematic look
-    
-                The adjustment works by modifying color saturation in HSL (Hue, Saturation, Lightness) color space while 
-                maintaining the original luminance values. This preserves the overall exposure and contrast of the image.
-            """,
+                "The adjustment works by modifying color saturation in HSL (Hue, Saturation, Lightness) color space while "
+                "maintaining the original luminance values. This preserves the overall exposure and contrast of the image."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "saturation_factor": {
                         "type": "integer",
-                        "description": """
-                            Controls the intensity of the saturation adjustment, similar to Lightroom's Saturation slider:
-                            - -100: Completely desaturated (grayscale)
-                            - -50: Reduced saturation 
-                            - 0: Original saturation 
-                            - 50: Increased saturation 
-                            - 100: Double saturation
-                        """,
+                        "description": (
+                            "Controls the intensity of the saturation adjustment, similar to Lightroom's Saturation slider:\n"
+                            "- -100: Completely desaturated (grayscale)\n"
+                            "- -50: Reduced saturation \n"
+                            "- 0: Original saturation \n"
+                            "- 50: Increased saturation \n"
+                            "- 100: Double saturation\n"
+                        ),
                     },
                     "reason": {
                         "type": "string",
                         "description": """
-                            Describe the main reasons for choosing this operation and this saturation_factor in no more than two sentences.
+                            Describe the main reasons for choosing this operation and this saturation_factor in no more than three sentences.
                         """,
                     },
                 },
@@ -279,61 +388,57 @@ class ImageProcessingToolBoxes:
         },
     ])
     def adjust_saturation(self, saturation_factor, reason):
-        new_output_path = f"{len(self.image_paths)}_{self.image_name}_saturation_{saturation_factor}.png"
+        (
+            "- Adjust Saturation: Which parts of the image benefit from changes in saturation? Increasing saturation can make colors more vivid and bold, enhancing emotional impact, while desaturating can give a more muted, artistic feel, focusing attention on texture and composition rather than color.\n"
+        )
+        new_output_path = f"{len(self.image_paths)}_{self.image_name}_saturation_{saturation_factor}.{self.extension_name}"
         self.image_paths.append(os.path.join(self.output_dir_path, new_output_path))
+        self.hr_image_paths.append(os.path.join(self.output_dir_path, self.parse_lr_path_to_hr_path(new_output_path)))
+
         self.log_processing_step(f"Adjusting saturation of {self.image_paths[-2]} to {saturation_factor}, reason: {reason}, save to: {self.image_paths[-1]}")
         self.processing_log.append(f"Adjusting saturation of image-{len(self.image_paths)-1} to {saturation_factor}, generate image-{len(self.image_paths)}, reason: {reason}.")
         self.function_calls.append(["adjust_saturation", saturation_factor, reason])
         self.history_messages.append({"role": "assistant", "content": f"Adjusting saturation of image-{len(self.image_paths)-1} to {saturation_factor}, reason: {reason}."})
+        print(self.processing_log[-1])
 
-        # 将saturation_factor从[-100, 100]映射到[0, 2]的范围
-        saturation_factor = (saturation_factor + 100) / 100
-        # TODO: 拟合之后要改这个
+        saturation(self.image_paths[-2], self.image_paths[-1], saturation_factor)
 
-        # Open an image file
-        with Image.open(self.image_paths[-2]) as img:
-            # Enhance the image's saturation
-            enhancer = ImageEnhance.Color(img)
-            img_enhanced = enhancer.enhance(saturation_factor)
-            
-            # Save the adjusted image
-            img_enhanced.save(self.image_paths[-1])
-            print(self.processing_log[-1])
+        if self.save_high_resolution:
+            saturation(self.hr_image_paths[-2], self.hr_image_paths[-1], saturation_factor)
 
     @tool_doc([
         {
             "name": "adjust_shadows",
-            "description": """
-                Adjust the shadows of an input image by modifying the intensity of darker areas while preserving lighter tones.
-
-                Shadow adjustment is particularly useful for:
+            "description": (
+                "Adjust the shadows of an input image by modifying the intensity of darker areas while preserving lighter tones.\n"
+                "Shadow adjustment is particularly useful for:\n"
                 
-                - Bringing out details in shadowed regions of photos
-                - Enhancing contrast and depth in low-light images
-                - Creating artistic effects by intensifying or softening shadows
-                - Balancing exposure in high-contrast scenes
+                "- Bringing out details in shadowed regions of photos\n"
+                "- Enhancing contrast and depth in low-light images\n"
+                "- Creating artistic effects by intensifying or softening shadows\n"
+                "- Balancing exposure in high-contrast scenes\n"
                 
-                This adjustment works by selectively modifying the darker pixels in the image, allowing fine-tuned control over shadow depth. 
-                Positive values intensify shadows, while negative values reduce shadow depth.
-            """,
+                "This adjustment works by selectively modifying the darker pixels in the image, allowing fine-tuned control over shadow depth. \n"
+                "Positive values intensify shadows, while negative values reduce shadow depth."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "shadow_factor": {
                         "type": "integer",
-                        "description": """
-                            Controls the intensity of shadow adjustment, similar to Lightroom's Shadows slider:
-                            - -100: Completely lightened shadows (maximum brightness)
-                            - -50: Significantly reduced shadows
-                            - 0: Original shadow level
-                            - 50: Increased shadow depth
-                            - 100: Maximum shadow depth (darker shadows)
-                        """,
+                        "description": (
+                            "Controls the intensity of shadow adjustment, similar to Lightroom's Shadows slider:\n"
+                            "- -100: Completely lightened shadows (maximum brightness)\n"
+                            "- -50: Significantly reduced shadows\n"
+                            "- 0: Original shadow level\n"
+                            "- 50: Increased shadow depth\n"
+                            "- 100: Maximum shadow depth (darker shadows)\n"
+                        ),
                     },
                     "reason": {
                         "type": "string",
                         "description": """
-                            Describe the main reasons for choosing this operation and this shadow_factor in no more than two sentences.
+                            Describe the main reasons for choosing this operation and this shadow_factor in no more than three sentences.
                         """,
                     },
                 },
@@ -342,31 +447,29 @@ class ImageProcessingToolBoxes:
         }
     ])
     def adjust_shadows(self, shadow_factor, reason):
-        new_output_path = f"{len(self.image_paths)}_{self.image_name}_shadows_{shadow_factor}.png"
+        (
+            "- Adjust Shadows: How should the shadows be handled to influence the image's mood? Deepening shadows might add mystery or drama, while lifting shadows can soften the contrast and reveal more detail in darker areas, creating a gentler and more open feeling.\n"
+        )
+        new_output_path = f"{len(self.image_paths)}_{self.image_name}_shadows_{shadow_factor}.{self.extension_name}"
         self.image_paths.append(os.path.join(self.output_dir_path, new_output_path))
+        self.hr_image_paths.append(os.path.join(self.output_dir_path, self.parse_lr_path_to_hr_path(new_output_path)))
+
         self.log_processing_step(f"Adjusting shadows of {self.image_paths[-2]} with factor {shadow_factor}, reason: {reason}, save to: {self.image_paths[-1]}")
         self.processing_log.append(f"Adjusting shadows of image-{len(self.image_paths)-1} with factor {shadow_factor}, generate image-{len(self.image_paths)}, reason: {reason}.")
         self.function_calls.append(["adjust_shadows", shadow_factor, reason])
         self.history_messages.append({"role": "assistant", "content": f"Adjusting shadows of image-{len(self.image_paths)-1} with factor {shadow_factor}, reason: {reason}."})
+        print(self.processing_log[-1])
 
-        # Open an image file
-        with Image.open(self.image_paths[-2]) as img:
+        shadows(self.image_paths[-2], self.image_paths[-1], shadow_factor)
 
-            grayscale = img.convert("L")
-            shadow_multiplier = 1 + (shadow_factor / 100.0)
-            shadows = grayscale.point(lambda p: int(p * shadow_multiplier) if p <= 128 else p)
-            img_shadowed = Image.merge("RGB", (shadows, shadows, shadows))
-            img_adjusted = Image.blend(img, img_shadowed, 0.5)
-            
-            img_adjusted.save(self.image_paths[-1])
-            print(self.processing_log[-1])
-    
+        if self.save_high_resolution:
+            shadows(self.hr_image_paths[-2], self.hr_image_paths[-1], shadow_factor)
+
     @tool_doc([
         {
             "name": "adjust_highlights",
             "description": """
                 Adjust the highlights of an input image by modifying the intensity of lighter areas while preserving darker tones.
-
                 Highlight adjustment is particularly useful for:
                 
                 - Reducing overexposed regions in bright scenes
@@ -394,7 +497,7 @@ class ImageProcessingToolBoxes:
                     "reason": {
                         "type": "string",
                         "description": """
-                            Describe the main reasons for choosing this operation and this highlight_factor in no more than two sentences.
+                            Describe the main reasons for choosing this operation and this highlight_factor in no more than three sentences.
                         """,
                     },
                 },
@@ -403,56 +506,57 @@ class ImageProcessingToolBoxes:
         },
     ])
     def adjust_highlights(self, highlight_factor, reason):
-        new_output_path = f"{len(self.image_paths)}_{self.image_name}_highlights_{highlight_factor}.png"
+        (
+            "- Adjust Highlights: How will adjusting the highlights affect the brightest areas of the image? Increasing highlights can make these areas pop and appear more vibrant, while reducing highlights may prevent overexposure and recover lost details in bright areas, giving the image a more balanced look.\n"
+        )
+        new_output_path = f"{len(self.image_paths)}_{self.image_name}_highlights_{highlight_factor}.{self.extension_name}"
         self.image_paths.append(os.path.join(self.output_dir_path, new_output_path))
+        self.hr_image_paths.append(os.path.join(self.output_dir_path, self.parse_lr_path_to_hr_path(new_output_path)))
+
         self.log_processing_step(f"Adjusting highlights of {self.image_paths[-2]} with factor {highlight_factor}, reason: {reason}, save to: {self.image_paths[-1]}")
         self.processing_log.append(f"Adjusting highlights of image-{len(self.image_paths)-1} with factor {highlight_factor}, generate image-{len(self.image_paths)}, reason: {reason}.")
         self.function_calls.append(["adjust_highlights", highlight_factor, reason])
         self.history_messages.append({"role": "assistant", "content": f"Adjusting highlights of image-{len(self.image_paths)-1} with factor {highlight_factor}, generate image-{len(self.image_paths)}, reason: {reason}."})
+        print(self.processing_log[-1])
 
-        with Image.open(self.image_paths[-2]) as img:
-            grayscale = img.convert("L")
-            highlight_multiplier = 1 + (highlight_factor / 100.0)
-            highlights = grayscale.point(lambda p: int(p * highlight_multiplier) if p > 128 else p)
-            img_highlighted = Image.merge("RGB", (highlights, highlights, highlights))
-            img_adjusted = Image.blend(img, img_highlighted, 0.5)
-            
-            img_adjusted.save(self.image_paths[-1])
-            print(self.processing_log[-1])
+        highlights(self.image_paths[-2], self.image_paths[-1], highlight_factor)
+
+        if self.save_high_resolution:
+            highlights(self.hr_image_paths[-2], self.hr_image_paths[-1], highlight_factor)
 
     @tool_doc([
         {
             "name": "adjust_contrast",
-            "description": """
-                Adjust the contrast of an input image by enhancing or reducing the difference between light and dark areas.
+            "description": (
+                "Adjust the contrast of an input image by enhancing or reducing the difference between light and dark areas.\n"
 
-                Contrast adjustment is particularly useful for:
+                "Contrast adjustment is particularly useful for:\n"
                 
-                - Improving visibility in flat or low-contrast images
-                - Adding depth to images for a more dynamic appearance
-                - Reducing harsh contrasts for a softer look
-                - Creating artistic effects through intense or subtle contrast
+                "- Improving visibility in flat or low-contrast images\n"
+                "- Adding depth to images for a more dynamic appearance\n"
+                "- Reducing harsh contrasts for a softer look\n"
+                "- Creating artistic effects through intense or subtle contrast\n"
                 
-                This adjustment modifies contrast levels across the image, with positive values increasing contrast and negative values reducing contrast.
-            """,
+                "This adjustment modifies contrast levels across the image, with positive values increasing contrast and negative values reducing contrast."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "contrast_factor": {
                         "type": "integer",
-                        "description": """
-                            Controls the intensity of contrast adjustment, similar to Lightroom's Contrast slider:
-                            - -100: Minimum contrast (muted tones)
-                            - -50: Reduced contrast
-                            - 0: Original contrast level
-                            - 50: Increased contrast
-                            - 100: Maximum contrast (highest contrast)
-                        """,
+                        "description": (
+                            "Controls the intensity of contrast adjustment, similar to Lightroom's Contrast slider:\n"
+                            "- -100: Minimum contrast (muted tones)\n"
+                            "- -50: Reduced contrast\n"
+                            "- 0: Original contrast level\n"
+                            "- 50: Increased contrast\n"
+                            "- 100: Maximum contrast (highest contrast)\n"
+                        ),
                     },
                     "reason": {
                         "type": "string",
                         "description": """
-                            Describe the main reasons for choosing this operation and this contrast_factor in no more than two sentences.
+                            Describe the main reasons for choosing this operation and this contrast_factor in no more than three sentences.
                         """,
                     },
                 },
@@ -461,119 +565,57 @@ class ImageProcessingToolBoxes:
         },
     ])
     def adjust_contrast(self, contrast_factor, reason):
-        new_output_path = f"{len(self.image_paths)}_{self.image_name}_contrast_{contrast_factor}.png"
+        (
+            "- Adjust Contrast: Should the contrast be modified to emphasize the difference between light and dark areas? For instance, increasing contrast can make the subject more striking and the details more pronounced, while lowering contrast may create a softer, more ethereal feel.\n"
+        )
+        new_output_path = f"{len(self.image_paths)}_{self.image_name}_contrast_{contrast_factor}.{self.extension_name}"
         self.image_paths.append(os.path.join(self.output_dir_path, new_output_path))
+        self.hr_image_paths.append(os.path.join(self.output_dir_path, self.parse_lr_path_to_hr_path(new_output_path)))
+
         self.log_processing_step(f"Adjusting contrast of {self.image_paths[-2]} with factor {contrast_factor}, reason: {reason}, save to: {self.image_paths[-1]}")
         self.processing_log.append(f"Adjusting contrast of image-{len(self.image_paths)-1} with factor {contrast_factor}, generate image-{len(self.image_paths)}, reason: {reason}.")
         self.function_calls.append(["adjust_contrast", contrast_factor, reason])
         self.history_messages.append({"role": "assistant", "content": f"Adjusting contrast of image-{len(self.image_paths)-1} with factor {contrast_factor}, generate image-{len(self.image_paths)}, reason: {reason}."})
+        print(self.processing_log[-1])
 
-        with Image.open(self.image_paths[-2]) as img:
-            # Map contrast_factor range to a multiplier effect
-            contrast_multiplier = 1 + (contrast_factor / 100.0)
-            
-            # Enhance the image's contrast based on contrast_multiplier
-            enhancer = ImageEnhance.Contrast(img)
-            img_contrasted = enhancer.enhance(contrast_multiplier)
-            
-            # Save the adjusted image
-            img_contrasted.save(self.image_paths[-1])
-            print(self.processing_log[-1])
-    
-    @tool_doc([
-        {
-            "name": "adjust_brightness",
-            "description": """
-                Adjust the brightness of an input image by increasing or decreasing the overall light levels.
+        contrast(self.image_paths[-2], self.image_paths[-1], contrast_factor)
 
-                Brightness adjustment is particularly useful for:
-                
-                - Correcting underexposed or overexposed images
-                - Adding vibrancy to darker photos
-                - Creating a soft or dramatic mood by altering brightness
-                - Enhancing visibility of details in low-light images
-                
-                This adjustment modifies the brightness of all pixels in the image, with positive values increasing brightness and negative values reducing brightness.
-            """,
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "brightness_factor": {
-                        "type": "integer",
-                        "description": """
-                            Controls the intensity of brightness adjustment, similar to Lightroom's Brightness slider:
-                            - -100: Minimum brightness (almost black)
-                            - -50: Reduced brightness
-                            - 0: Original brightness level
-                            - 50: Increased brightness
-                            - 100: Maximum brightness (brightest level)
-                        """,
-                    },
-                    "reason": {
-                        "type": "string",
-                        "description": """
-                            Describe the main reasons for choosing this operation and this brightness_factor in no more than two sentences.
-                        """,
-                    },
-                },
-                "required": ["brightness_factor", "reason"]
-            }
-        },
-    ])
-    def adjust_brightness(self, brightness_factor, reason):
-        new_output_path = f"{len(self.image_paths)}_{self.image_name}_brightness_{brightness_factor}.png"
-        self.image_paths.append(os.path.join(self.output_dir_path, new_output_path))
-        self.log_processing_step(f"Adjusting brightness of {self.image_paths[-2]} with factor {brightness_factor}, reason: {reason}, save to: {self.image_paths[-1]}")
-        self.processing_log.append(f"Adjusting brightness of image-{len(self.image_paths)-1} with factor {brightness_factor}, generate image-{len(self.image_paths)}, reason: {reason}.")
-        self.function_calls.append(["adjust_brightness", brightness_factor, reason])
-        self.history_messages.append({"role": "assistant", "content": f"Adjusting brightness of image-{len(self.image_paths)-1} with factor {brightness_factor}, generate image-{len(self.image_paths)}, reason: {reason}."})
-
-        # Open an image file
-        with Image.open(self.image_paths[-2]) as img:
-            # Map brightness_factor range to a multiplier effect
-            brightness_multiplier = 1 + (brightness_factor / 100.0)
-            
-            # Enhance the image's brightness based on brightness_multiplier
-            enhancer = ImageEnhance.Brightness(img)
-            img_brightened = enhancer.enhance(brightness_multiplier)
-            
-            # Save the adjusted image
-            img_brightened.save(self.image_paths[-1])
-            print(self.processing_log[-1])
+        if self.save_high_resolution:
+            contrast(self.hr_image_paths[-2], self.hr_image_paths[-1], contrast_factor)
 
     @tool_doc([
         {
             "name": "adjust_blacks",
-            "description": """
-                Adjust the black levels of an input image by intensifying or softening the darker regions, similar to Lightroom's black adjustment.
+            "description": (
+                "Adjust the black levels of an input image by intensifying or softening the darker regions, similar to Lightroom's black adjustment.\n"
 
-                Black level adjustment is particularly useful for:
+                "Black level adjustment is particularly useful for:\n"
                 
-                - Adding depth to shadowed areas
-                - Increasing the sense of contrast by deepening blacks
-                - Revealing hidden details in dark regions
-                - Softening harsh black areas for a more muted look
+                "- Adding depth to shadowed areas\n"
+                "- Increasing the sense of contrast by deepening blacks\n"
+                "- Revealing hidden details in dark regions\n"
+                "- Softening harsh black areas for a more muted look\n"
                 
-                This adjustment modifies the darkest regions of the image, with positive values deepening the blacks and negative values softening them.
-            """,
+                "This adjustment modifies the darkest regions of the image, with positive values deepening the blacks and negative values softening them."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "black_factor": {
                         "type": "integer",
-                        "description": """
-                            Controls the intensity of black adjustment, similar to Lightroom's Blacks slider:
-                            - -100: Minimum black level (lightened shadows)
-                            - -50: Reduced black depth
-                            - 0: Original black level
-                            - 50: Increased black depth
-                            - 100: Maximum black depth (deepest blacks)
-                        """,
+                        "description": (
+                            "Controls the intensity of black adjustment, similar to Lightroom's Blacks slider:\n"
+                            "- -100: Minimum black level (lightened shadows)\n"
+                            "- -50: Reduced black depth\n"
+                            "- 0: Original black level\n"
+                            "- 50: Increased black depth\n"
+                            "- 100: Maximum black depth (deepest blacks)\n"
+                        ),
                     },
                     "reason": {
                         "type": "string",
                         "description": """
-                            Describe the main reasons for choosing this operation and this black_factor in no more than two sentences.
+                            Describe the main reasons for choosing this operation and this black_factor in no more than three sentences.
                         """,
                     },
                 },
@@ -582,176 +624,250 @@ class ImageProcessingToolBoxes:
         },
     ])
     def adjust_blacks(self, black_factor, reason):
-        new_output_path = f"{len(self.image_paths)}_{self.image_name}_blacks_{black_factor}.png"
+        (
+            "- Adjust Blacks: Should the black levels be deepened to add intensity to the image? For example, darkening the blacks can increase contrast and make the image more dramatic, while raising the black levels could reveal more detail in the shadowed areas, softening the overall mood.\n"
+        )
+        new_output_path = f"{len(self.image_paths)}_{self.image_name}_blacks_{black_factor}.{self.extension_name}"
         self.image_paths.append(os.path.join(self.output_dir_path, new_output_path))
+        self.hr_image_paths.append(os.path.join(self.output_dir_path, self.parse_lr_path_to_hr_path(new_output_path)))
+
         self.log_processing_step(f"Adjusting blacks of {self.image_paths[-2]} with factor {black_factor}, reason: {reason}, save to: {self.image_paths[-1]}")
         self.processing_log.append(f"Adjusting blacks of image-{len(self.image_paths)-1} with factor {black_factor}, generate image-{len(self.image_paths)}, reason: {reason}.")
         self.function_calls.append(["adjust_blacks", black_factor, reason])
         self.history_messages.append({"role": "assistant", "content": f"Adjusting blacks of image-{len(self.image_paths)-1} with factor {black_factor}, generate image-{len(self.image_paths)}, reason: {reason}."})
+        print(self.processing_log[-1])
 
-        # Open the image and convert to grayscale to identify shadow areas
-        with Image.open(self.image_paths[-2]) as img:
-            img_gray = img.convert("L")
-            img_gray_np = np.array(img_gray)
+        black(self.image_paths[-2], self.image_paths[-1], black_factor)
 
-            # Calculate histogram and determine shadow threshold
-            hist, _ = np.histogram(img_gray_np, bins=256, range=(0, 255))
-            peak_intensity = np.argmax(hist[:128])  # Main peak in dark range
-            shadow_threshold = int(peak_intensity * 0.5)  # Shadow threshold set to half the peak intensity
-
-            # Convert the original image to a numpy array for adjustment
-            img_array = np.array(img).astype(np.float32)
-
-            # Apply black adjustment below the shadow threshold
-            shadows = img_array < shadow_threshold
-            black_multiplier = 1 + (black_factor / 100.0)
-            img_array[shadows] *= black_multiplier
-            img_array = np.clip(img_array, 0, 255)  # Clip values to [0, 255]
-
-            # Convert adjusted array back to image format
-            img_adjusted = Image.fromarray(img_array.astype(np.uint8))
-            
-            # Save the adjusted image
-            img_adjusted.save(self.image_paths[-1])
-            print(self.processing_log[-1])
-
-    @tool_doc([
-        {
-            "name": "adjust_gamma",
-            "description": """
-                Adjust the gamma of an input image, which modifies brightness and contrast in a non-linear way, enhancing midtones without overly affecting shadows or highlights.
-
-                Gamma adjustment is particularly useful for:
-                
-                - Correcting images with improper exposure
-                - Enhancing details in midtones
-                - Brightening or darkening images for aesthetic effect
-                - Compensating for display differences across devices
-                
-                This adjustment changes the gamma of all pixels, where values greater than 1 brighten the image and values less than 1 darken it.
-            """,
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "gamma_factor": {
-                        "type": "float",
-                        "description": """
-                            Controls the intensity of gamma adjustment, similar to gamma sliders in photo editing software:
-                            - < 1 and > 0: Darkens the image
-                            - 1: Original gamma level
-                            - > 1: Brightens the image
-                        """,
-                    },
-                    "reason": {
-                        "type": "string",
-                        "description": """
-                            Describe the main reasons for choosing this operation and this gamma_factor in no more than two sentences.
-                        """,
-                    },
-                },
-                "required": ["gamma_factor", "reason"]
-            }
-        },
-    ])
-    def adjust_gamma(self, gamma_factor, reason):
-        new_output_path = f"{len(self.image_paths)}_{self.image_name}_gamma_{gamma_factor}.png"
-        self.image_paths.append(os.path.join(self.output_dir_path, new_output_path))
-        self.log_processing_step(f"Adjusting gamma of {self.image_paths[-2]} with factor {gamma_factor}, reason: {reason}, save to: {self.image_paths[-1]}")
-        self.processing_log.append(f"Adjusting gamma of image-{len(self.image_paths)-1} with factor {gamma_factor}, generate image-{len(self.image_paths)}, reason: {reason}.")
-        self.function_calls.append(["adjust_gamma", gamma_factor, reason])
-        self.history_messages.append({"role": "assistant", "content": f"Adjusting gamma of image-{len(self.image_paths)-1} with factor {gamma_factor}, generate image-{len(self.image_paths)}, reason: {reason}."})
-
-        # Open and adjust the image's gamma
-        with Image.open(self.image_paths[-2]) as img:
-            # Convert the image to a numpy array and normalize to [0, 1]
-            img_array = np.array(img).astype(np.float32) / 255.0
-            
-            # Apply gamma correction
-            img_gamma_corrected = np.clip(np.power(img_array, gamma_factor), 0, 1)
-            
-            # Scale back to [0, 255] and convert to uint8
-            img_gamma_corrected = (img_gamma_corrected * 255).astype(np.uint8)
-            
-            # Convert array back to image and save
-            img_adjusted = Image.fromarray(img_gamma_corrected)
-            img_adjusted.save(self.image_paths[-1])
-            print(self.processing_log[-1])
+        if self.save_high_resolution:
+            black(self.hr_image_paths[-2], self.hr_image_paths[-1], black_factor)
 
     @tool_doc([
         {
             "name": "adjust_whites",
-            "description": """
-                Adjust the white levels of an input image by intensifying or softening the brighter regions, similar to Lightroom's white adjustment. 
-                An automatic threshold detection is used to identify highlight areas based on image intensity percentiles.
+            "description": (
+                "Adjust the white levels of an input image by intensifying or softening the brighter regions, similar to Lightroom's white adjustment. \n"
+                "An automatic threshold detection is used to identify highlight areas based on image intensity percentiles.\n"
 
-                White level adjustment is particularly useful for:
+                "White level adjustment is particularly useful for:\n"
                 
-                - Enhancing bright areas for added vibrancy
-                - Controlling the brightness of highlighted areas
-                - Softening intense whites for a balanced look
-                - Bringing out subtle details in bright regions
+                "- Enhancing bright areas for added vibrancy\n"
+                "- Controlling the brightness of highlighted areas\n"
+                "- Softening intense whites for a balanced look\n"
+                "- Bringing out subtle details in bright regions\n"
                 
-                This adjustment modifies the brightest regions of the image, with positive values intensifying whites and negative values reducing their brightness.
-            """,
+                "This adjustment modifies the brightest regions of the image, with positive values intensifying whites and negative values softening them."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "white_factor": {
-                        "type": "float",
-                        "description": """
-                            Controls the intensity of white adjustment, similar to Lightroom's Whites slider:
-                            - < 1: Reduces white intensity
-                            - 1: Original white level
-                            - > 1: Increases white intensity
-                        """,
+                        "type": "integer",
+                        "description": (
+                            "Controls the intensity of white adjustment, similar to Lightroom's Whites slider:\n"
+                            "- -100: Minimum white level (reduced highlights)\n"
+                            "- -50: Moderately softened highlights\n"
+                            "- 0: Original white level\n"
+                            "- 50: Increased white intensity\n"
+                            "- 100: Maximum white intensity (brightest highlights)\n"
+                        ),
                     },
                     "reason": {
                         "type": "string",
                         "description": """
-                            Describe the main reasons for choosing this operation and this white_factor in no more than two sentences.
+                            Describe the main reasons for choosing this operation and this white_factor in no more than three sentences.
                         """,
                     },
                 },
                 "required": ["white_factor", "reason"]
             }
-        }
+        } 
     ])
     def adjust_whites(self, white_factor, reason):
-        new_output_path = f"{len(self.image_paths)}_{self.image_name}_whites_{white_factor}.png"
+        (
+            "- Adjust Whites: Will adjusting the white levels change the clarity of the brightest spots in the image? Increasing the whites can make the light areas more dazzling and eye-catching, while reducing the whites might tone down the overall brightness and create a more cohesive, understated look.\n"
+        )
+        new_output_path = f"{len(self.image_paths)}_{self.image_name}_whites_{white_factor}.{self.extension_name}"
         self.image_paths.append(os.path.join(self.output_dir_path, new_output_path))
+        self.hr_image_paths.append(os.path.join(self.output_dir_path, self.parse_lr_path_to_hr_path(new_output_path)))
+
         self.log_processing_step(f"Adjusting whites of {self.image_paths[-2]} with factor {white_factor}, reason: {reason}, save to: {self.image_paths[-1]}")
         self.processing_log.append(f"Adjusting whites of image-{len(self.image_paths)-1} with factor {white_factor}, generate image-{len(self.image_paths)}, reason: {reason}.")
         self.function_calls.append(["adjust_whites", white_factor, reason])
         self.history_messages.append({"role": "assistant", "content": f"Adjusting whites of image-{len(self.image_paths)-1} with factor {white_factor}, generate image-{len(self.image_paths)}, reason: {reason}."})
+        print(self.processing_log[-1])
 
-        # Open the image and convert to grayscale to identify highlight areas
-        with Image.open(self.image_paths[-2]) as img:
-            img_gray = img.convert("L")
-            img_gray_np = np.array(img_gray)
+        white(self.image_paths[-2], self.image_paths[-1], white_factor)
 
-            # Calculate a dynamic white threshold based on the upper 5% intensity percentile
-            white_threshold = np.percentile(img_gray_np, 95)
-            print(f"Automatically calculated white threshold: {white_threshold}")
+        if self.save_high_resolution:
+            white(self.hr_image_paths[-2], self.hr_image_paths[-1], white_factor)
 
-            # Convert original image to numpy array for white adjustment
-            img_array = np.array(img).astype(np.float32)
+    @tool_doc([
+        {
+            "name": "adjust_tone",
+            "description": (
+                "Adjust the tone of an input image by modifying the green and red channel balance, shifting midtones towards either red or green.\n"
 
-            # Apply white adjustment above the white threshold
-            mask = img_array > white_threshold
-            img_array[mask] += (img_array[mask] - white_threshold) * (white_factor - 1)
-            
-            # Clip values to ensure they stay within [0, 255]
-            img_array = np.clip(img_array, 0, 255).astype(np.uint8)
-            
-            # Convert adjusted array back to image format and save
-            img_adjusted = Image.fromarray(img_array)
-            img_adjusted.save(self.image_paths[-1])
-            print(self.processing_log[-1])
+                "Tone adjustment is particularly useful for:\n"
+                
+                "- Adding subtle color shifts to enhance mood\n"
+                "- Creating a cooler (green) or warmer (red) tone in midtones\n"
+                "- Fine-tuning the overall visual feel of the image\n"
 
-    ## TODO: Add more operations, such as Color temperature and tone
-    
+                "This adjustment modifies the green and red balance, where positive values increase red tones, creating a warmer look, and negative values increase green tones for a cooler look."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tone_factor": {
+                        "type": "integer",
+                        "description": (
+                            "Controls the intensity of tone adjustment, with positive values adding red tones and negative values adding green tones. Range: [-150, 150].\n"
+                            "- -150: Maximum green tone (cooler midtones)\n"
+                            "- 0: Original tone level\n"
+                            "- 150: Maximum red tone (warmer midtones)\n"
+                        ),
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": """
+                            Describe the main reasons for choosing this operation and this tone_factor in no more than three sentences.
+                        """,
+                    },
+                },
+                "required": ["tone_factor", "reason"]
+            }
+        }
+    ])
+    def adjust_tone(self, tone_factor, reason):
+        (
+            "- Adjust Tone: How will tone adjustments affect the overall mood of the image? Increasing the tone towards red can make the image feel warmer and more vibrant, while shifting the tone towards green can create a cooler, more serene feel.\n"
+        )
+        new_output_path = f"{len(self.image_paths)}_{self.image_name}_tone_{tone_factor}.{self.extension_name}"
+        self.image_paths.append(os.path.join(self.output_dir_path, new_output_path))
+        self.hr_image_paths.append(os.path.join(self.output_dir_path, self.parse_lr_path_to_hr_path(new_output_path)))
 
+        self.log_processing_step(f"Adjusting tone of {self.image_paths[-2]} with factor {tone_factor}, reason: {reason}, save to: {self.image_paths[-1]}")
+        self.processing_log.append(f"Adjusting tone of image-{len(self.image_paths)-1} with factor {tone_factor}, generate image-{len(self.image_paths)}, reason: {reason}.")
+        self.function_calls.append(["tone", tone_factor, reason])
+        self.history_messages.append({"role": "assistant", "content": f"Adjusting tone of image-{len(self.image_paths)-1} with factor {tone_factor}, generate image-{len(self.image_paths)}, reason: {reason}."})
+        print(self.processing_log[-1])
 
+        tone(self.image_paths[-2], self.image_paths[-1], tone_factor)
 
+        if self.save_high_resolution:
+            tone(self.hr_image_paths[-2], self.hr_image_paths[-1], tone_factor)
 
+    @tool_doc([
+        {
+            "name": "adjust_color_temperature",
+            "description": (
+                "Adjust the color temperature of an input image to make it appear warmer or cooler, similar to temperature adjustments in photo editing software. \n"
+                "The original image color temperature is assumed to be 6000K, and adjustments are applied accordingly.\n"
+
+                "Color temperature adjustment is particularly useful for:\n"
+                
+                "- Correcting color balance in images shot under varying lighting conditions\n"
+                "- Creating mood by warming or cooling the image\n"
+                "- Enhancing colors in natural settings\n"
+                
+                "This adjustment modifies the blue and red color channels, where lower temperatures (<6000K) add warmth (yellow/orange tones), and higher temperatures (>6000K) add coolness (blue tones)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "color_temperature_factor": {
+                        "type": "integer",
+                        "description": (
+                            "Controls the intensity of color temperature adjustment in Kelvin. Range: [2000, 50000].\n"
+                            "- 2000: 2000K Maximum warmth (blue tones)\n"
+                            "- 6000: 6000K Original color temperature\n"
+                            "- 50000: 50000K Maximum coolness (yellow/orange tones)\n"
+                        ),
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": """
+                            Describe the main reasons for choosing this operation and this color_temperature_factor in no more than three sentences.
+                        """,
+                    },
+                },
+                "required": ["color_temperature_factor", "reason"]
+            }
+        }
+    ])
+    def adjust_color_temperature(self, color_temperature_factor, reason):
+        (
+            "- Adjust Color Temperature: How will color temperature adjustments affect the overall mood of the image? Lowering the temperature can make the image feel cooler and more serene, while raising the temperature can make the image feel warmer and more vibrant.\n"
+        )
+        new_output_path = f"{len(self.image_paths)}_{self.image_name}_temperature_{color_temperature_factor}.{self.extension_name}"
+        self.image_paths.append(os.path.join(self.output_dir_path, new_output_path))
+        self.hr_image_paths.append(os.path.join(self.output_dir_path, self.parse_lr_path_to_hr_path(new_output_path)))
+
+        self.log_processing_step(f"Adjusting color temperature of {self.image_paths[-2]} with factor {color_temperature_factor}, reason: {reason}, save to: {self.image_paths[-1]}")
+        self.processing_log.append(f"Adjusting color temperature of image-{len(self.image_paths)-1} with factor {color_temperature_factor}, generate image-{len(self.image_paths)}, reason: {reason}.")
+        self.function_calls.append(["color_temperature", color_temperature_factor, reason])
+        self.history_messages.append({"role": "assistant", "content": f"Adjusting color temperature of image-{len(self.image_paths)-1} with factor {color_temperature_factor}, generate image-{len(self.image_paths)}, reason: {reason}."})
+        print(self.processing_log[-1])
+
+        color_temperature(self.image_paths[-2], self.image_paths[-1], color_temperature_factor)
+
+        if self.save_high_resolution:
+            color_temperature(self.hr_image_paths[-2], self.hr_image_paths[-1], color_temperature_factor)
+
+    @tool_doc([
+        {
+            "name": "adjust_exposure",
+            "description": (
+                "Adjust the exposure of an image, changing its overall brightness to achieve a balanced look.\n"
+                
+                "Exposure adjustment is particularly useful for:\n"
+                
+                "- Correcting underexposed or overexposed images\n"
+                "- Enhancing details in very dark or very bright images\n"
+                "- Creating artistic effects by brightening or darkening the image\n"
+                
+                "This adjustment modifies the exposure across all pixels, with positive values brightening the image and negative values darkening it."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "exposure_factor": {
+                        "type": "number",
+                        "description": (
+                            "Controls the intensity of exposure adjustment. Range: [-5, 5].\n"
+                            "- -5: Maximum darkening (lowest exposure)\n"
+                            "- 0: Original exposure\n"
+                            "- 5: Maximum brightening (highest exposure)\n"
+                        ),
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": """
+                            Describe the main reasons for choosing this operation and this exposure_factor in no more than three sentences.
+                        """,
+                    },
+                },
+                "required": ["exposure_factor", "reason"]
+            }
+        }
+    ])
+    def adjust_exposure(self, exposure_factor, reason):
+        (
+            "- Adjust Exposure: How will exposure adjustments affect the overall mood of the image? Increasing exposure might make the image feel more vibrant and energetic, while reducing exposure can add a sense of subtlety or calmness, enhancing any moody or low-light elements.\n"
+        )
+        new_output_path = f"{len(self.image_paths)}_{self.image_name}_exposure_{exposure_factor}.{self.extension_name}"
+        self.image_paths.append(os.path.join(self.output_dir_path, new_output_path))
+        self.hr_image_paths.append(os.path.join(self.output_dir_path, self.parse_lr_path_to_hr_path(new_output_path)))
+
+        self.log_processing_step(f"Adjusting exposure of {self.image_paths[-2]} with factor {exposure_factor}, reason: {reason}, save to: {self.image_paths[-1]}")
+        self.processing_log.append(f"Adjusting exposure of image-{len(self.image_paths)-1} with factor {exposure_factor}, generate image-{len(self.image_paths)}, reason: {reason}.")
+        self.function_calls.append(["exposure", exposure_factor, reason])
+        self.history_messages.append({"role": "assistant", "content": f"Adjusting exposure of image-{len(self.image_paths)-1} with factor {exposure_factor}, generate image-{len(self.image_paths)}, reason: {reason}."})
+        print(self.processing_log[-1])
+
+        exposure(self.image_paths[-2], self.image_paths[-1], exposure_factor)
+
+        if self.save_high_resolution:
+            exposure(self.hr_image_paths[-2], self.hr_image_paths[-1], exposure_factor)
 

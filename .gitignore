@@ -24,3 +24,7 @@ dist/
 .webp
 .gif
 .bmp
+
+# Test images
+test-images/
+test-output/
