@@ -83,6 +83,20 @@ class AgentClient:
             self.parse_function_call(completion, self.toolbox_instance)
         else:
             return completion
+        
+    def agent_reflection_plan(self, system_prompt, user_prompt=None, current_function_name=None, provide_image=True, history_messages=True, run_tool=True):
+        """
+        Handles the interaction between the agent and the user to reflect on a processing plan.
+        """
+        image_path = self.toolbox_instance.get_current_image_path() if provide_image else None
+        past_messages = self.toolbox_instance.history_messages if history_messages else None
+        messages = self.build_messages(system_prompt, user_prompt, image_path, past_messages)
+        completion = self.create_chat_completion(messages, self.toolbox_instance.get_tool_docs([self.toolbox_instance.satisfactory, self.toolbox_instance.undo_step]), tool_choice="required")
+
+        if run_tool:
+            self.parse_function_call(completion, self.toolbox_instance)
+        else:
+            return completion
 
     @staticmethod
     def build_image_message(image_path, messages: list = None):
