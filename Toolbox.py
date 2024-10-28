@@ -438,67 +438,6 @@ class ImageProcessingToolBoxes:
         self.history_messages.append({"role": "assistant", "content": f"Adjusting contrast of image-{len(self.image_paths)-1} with factor {contrast_factor}, generate image-{len(self.image_paths)}, reason: {reason}."})
 
         contrast(self.image_paths[-2], self.image_paths[-1], contrast_factor)
-    
-    @tool_doc([
-        {
-            "name": "adjust_brightness",
-            "description": """
-                Adjust the brightness of an input image by increasing or decreasing the overall light levels.
-
-                Brightness adjustment is particularly useful for:
-                
-                - Correcting underexposed or overexposed images
-                - Adding vibrancy to darker photos
-                - Creating a soft or dramatic mood by altering brightness
-                - Enhancing visibility of details in low-light images
-                
-                This adjustment modifies the brightness of all pixels in the image, with positive values increasing brightness and negative values reducing brightness.
-            """,
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "brightness_factor": {
-                        "type": "integer",
-                        "description": """
-                            Controls the intensity of brightness adjustment, similar to Lightroom's Brightness slider:
-                            - -100: Minimum brightness (almost black)
-                            - -50: Reduced brightness
-                            - 0: Original brightness level
-                            - 50: Increased brightness
-                            - 100: Maximum brightness (brightest level)
-                        """,
-                    },
-                    "reason": {
-                        "type": "string",
-                        "description": """
-                            Describe the main reasons for choosing this operation and this brightness_factor in no more than two sentences.
-                        """,
-                    },
-                },
-                "required": ["brightness_factor", "reason"]
-            }
-        },
-    ])
-    def adjust_brightness(self, brightness_factor, reason):
-        new_output_path = f"{len(self.image_paths)}_{self.image_name}_brightness_{brightness_factor}.png"
-        self.image_paths.append(os.path.join(self.output_dir_path, new_output_path))
-        self.log_processing_step(f"Adjusting brightness of {self.image_paths[-2]} with factor {brightness_factor}, reason: {reason}, save to: {self.image_paths[-1]}")
-        self.processing_log.append(f"Adjusting brightness of image-{len(self.image_paths)-1} with factor {brightness_factor}, generate image-{len(self.image_paths)}, reason: {reason}.")
-        self.function_calls.append(["adjust_brightness", brightness_factor, reason])
-        self.history_messages.append({"role": "assistant", "content": f"Adjusting brightness of image-{len(self.image_paths)-1} with factor {brightness_factor}, generate image-{len(self.image_paths)}, reason: {reason}."})
-
-        # Open an image file
-        with Image.open(self.image_paths[-2]) as img:
-            # Map brightness_factor range to a multiplier effect
-            brightness_multiplier = 1 + (brightness_factor / 100.0)
-            
-            # Enhance the image's brightness based on brightness_multiplier
-            enhancer = ImageEnhance.Brightness(img)
-            img_brightened = enhancer.enhance(brightness_multiplier)
-            
-            # Save the adjusted image
-            img_brightened.save(self.image_paths[-1])
-            print(self.processing_log[-1])
 
     @tool_doc([
         {
@@ -552,68 +491,6 @@ class ImageProcessingToolBoxes:
 
     @tool_doc([
         {
-            "name": "adjust_gamma",
-            "description": """
-                Adjust the gamma of an input image, which modifies brightness and contrast in a non-linear way, enhancing midtones without overly affecting shadows or highlights.
-
-                Gamma adjustment is particularly useful for:
-                
-                - Correcting images with improper exposure
-                - Enhancing details in midtones
-                - Brightening or darkening images for aesthetic effect
-                - Compensating for display differences across devices
-                
-                This adjustment changes the gamma of all pixels, where values greater than 1 brighten the image and values less than 1 darken it.
-            """,
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "gamma_factor": {
-                        "type": "float",
-                        "description": """
-                            Controls the intensity of gamma adjustment, similar to gamma sliders in photo editing software:
-                            - < 1 and > 0: Darkens the image
-                            - 1: Original gamma level
-                            - > 1: Brightens the image
-                        """,
-                    },
-                    "reason": {
-                        "type": "string",
-                        "description": """
-                            Describe the main reasons for choosing this operation and this gamma_factor in no more than two sentences.
-                        """,
-                    },
-                },
-                "required": ["gamma_factor", "reason"]
-            }
-        },
-    ])
-    def adjust_gamma(self, gamma_factor, reason):
-        new_output_path = f"{len(self.image_paths)}_{self.image_name}_gamma_{gamma_factor}.png"
-        self.image_paths.append(os.path.join(self.output_dir_path, new_output_path))
-        self.log_processing_step(f"Adjusting gamma of {self.image_paths[-2]} with factor {gamma_factor}, reason: {reason}, save to: {self.image_paths[-1]}")
-        self.processing_log.append(f"Adjusting gamma of image-{len(self.image_paths)-1} with factor {gamma_factor}, generate image-{len(self.image_paths)}, reason: {reason}.")
-        self.function_calls.append(["adjust_gamma", gamma_factor, reason])
-        self.history_messages.append({"role": "assistant", "content": f"Adjusting gamma of image-{len(self.image_paths)-1} with factor {gamma_factor}, generate image-{len(self.image_paths)}, reason: {reason}."})
-
-        # Open and adjust the image's gamma
-        with Image.open(self.image_paths[-2]) as img:
-            # Convert the image to a numpy array and normalize to [0, 1]
-            img_array = np.array(img).astype(np.float32) / 255.0
-            
-            # Apply gamma correction
-            img_gamma_corrected = np.clip(np.power(img_array, gamma_factor), 0, 1)
-            
-            # Scale back to [0, 255] and convert to uint8
-            img_gamma_corrected = (img_gamma_corrected * 255).astype(np.uint8)
-            
-            # Convert array back to image and save
-            img_adjusted = Image.fromarray(img_gamma_corrected)
-            img_adjusted.save(self.image_paths[-1])
-            print(self.processing_log[-1])
-
-    @tool_doc([
-        {
             "name": "adjust_whites",
             "description": """
                 Adjust the white levels of an input image by intensifying or softening the brighter regions, similar to Lightroom's white adjustment. 
@@ -661,10 +538,154 @@ class ImageProcessingToolBoxes:
 
         white(self.image_paths[-2], self.image_paths[-1], white_factor)
 
-    ## TODO: Add more operations, such as Color temperature and tone
-    
+    @tool_doc([
+        {
+            "name": "tone",
+            "description": """
+                Adjust the tone of an input image by modifying the green and red channel balance, shifting midtones towards either red or green.
 
+                Tone adjustment is particularly useful for:
+                
+                - Adding subtle color shifts to enhance mood
+                - Creating a cooler (green) or warmer (red) tone in midtones
+                - Fine-tuning the overall visual feel of the image
 
+                This adjustment modifies the green and red balance, where positive values increase red tones, creating a warmer look, and negative values increase green tones for a cooler look.
+            """,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tone_factor": {
+                        "type": "float",
+                        "description": """
+                            Controls the intensity of tone adjustment, with positive values adding red tones and negative values adding green tones. Range: [-150, 150].
+                            - -150: Maximum green tone (cooler midtones)
+                            - 0: Original tone level
+                            - 150: Maximum red tone (warmer midtones)
+                        """,
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": """
+                            Describe the main reasons for choosing this operation and this tone_factor in no more than two sentences.
+                        """,
+                    },
+                },
+                "required": ["tone_factor", "reason"]
+            }
+        }
+    ])
+    def adjust_tone(self, tone_factor, reason):
+        new_output_path = f"{len(self.image_paths)}_{self.image_name}_tone_{tone_factor}.png"
+        self.image_paths.append(os.path.join(self.output_dir_path, new_output_path))
+        self.log_processing_step(
+            f"Adjusting tone of {self.image_paths[-2]} with factor {tone_factor}, reason: {reason}, save to: {self.image_paths[-1]}"
+        )
+        self.processing_log.append(
+            f"Adjusting tone of image-{len(self.image_paths)-1} with factor {tone_factor}, generate image-{len(self.image_paths)}, reason: {reason}."
+        )
+        self.function_calls.append(["tone", tone_factor, reason])
 
+        tone(self.image_paths[-2], self.image_paths[-1], tone_factor)
 
+    @tool_doc([
+        {
+            "name": "color_temperature",
+            "description": """
+                Adjust the color temperature of an input image to make it appear warmer or cooler, similar to temperature adjustments in photo editing software. 
+                The original image color temperature is assumed to be 6000K, and adjustments are applied accordingly.
+
+                Color temperature adjustment is particularly useful for:
+                
+                - Correcting color balance in images shot under varying lighting conditions
+                - Creating mood by warming or cooling the image
+                - Enhancing colors in natural settings
+                
+                This adjustment modifies the blue and red color channels, where lower temperatures (<6000K) add warmth (yellow/orange tones), and higher temperatures (>6000K) add coolness (blue tones).
+            """,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "color_temperature_factor": {
+                        "type": "float",
+                        "description": """
+                            Controls the intensity of color temperature adjustment in Kelvin. Range: [2000, 50000].
+                            - 2000K: Maximum warmth (blue tones)
+                            - 6000K: Original color temperature
+                            - 50000K: Maximum coolness (yellow/orange tones)
+                        """,
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": """
+                            Describe the main reasons for choosing this operation and this color_temperature_factor in no more than two sentences.
+                        """,
+                    },
+                },
+                "required": ["color_temperature_factor", "reason"]
+            }
+        }
+    ])
+    def color_temperature(self, color_temperature_factor, reason):
+        new_output_path = f"{len(self.image_paths)}_{self.image_name}_temperature_{color_temperature_factor}.png"
+        self.image_paths.append(os.path.join(self.output_dir_path, new_output_path))
+        self.log_processing_step(
+            f"Adjusting color temperature of {self.image_paths[-2]} with factor {color_temperature_factor}, reason: {reason}, save to: {self.image_paths[-1]}"
+        )
+        self.processing_log.append(
+            f"Adjusting color temperature of image-{len(self.image_paths)-1} with factor {color_temperature_factor}, generate image-{len(self.image_paths)}, reason: {reason}."
+        )
+        self.function_calls.append(["color_temperature", color_temperature_factor, reason])
+
+        color_temperature(self.image_paths[-2], self.image_paths[-1], color_temperature_factor)
+
+    @tool_doc([
+        {
+            "name": "exposure",
+            "description": """
+                Adjust the exposure of an image, changing its overall brightness to achieve a balanced look.
+                
+                Exposure adjustment is particularly useful for:
+                
+                - Correcting underexposed or overexposed images
+                - Enhancing details in very dark or very bright images
+                - Creating artistic effects by brightening or darkening the image
+                
+                This adjustment modifies the exposure across all pixels, with positive values brightening the image and negative values darkening it.
+            """,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "exposure_factor": {
+                        "type": "float",
+                        "description": """
+                            Controls the intensity of exposure adjustment. Range: [-5, 5].
+                            - -5: Maximum darkening (lowest exposure)
+                            - 0: Original exposure
+                            - 5: Maximum brightening (highest exposure)
+                        """,
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": """
+                            Describe the main reasons for choosing this operation and this exposure_factor in no more than two sentences.
+                        """,
+                    },
+                },
+                "required": ["exposure_factor", "reason"]
+            }
+        }
+    ])
+    def exposure(self, exposure_factor, reason):
+        new_output_path = f"{len(self.image_paths)}_{self.image_name}_exposure_{exposure_factor}.png"
+        self.image_paths.append(os.path.join(self.output_dir_path, new_output_path))
+        self.log_processing_step(
+            f"Adjusting exposure of {self.image_paths[-2]} with factor {exposure_factor}, reason: {reason}, save to: {self.image_paths[-1]}"
+        )
+        self.processing_log.append(
+            f"Adjusting exposure of image-{len(self.image_paths)-1} with factor {exposure_factor}, generate image-{len(self.image_paths)}, reason: {reason}."
+        )
+        self.function_calls.append(["exposure", exposure_factor, reason])
+
+        exposure(self.image_paths[-2], self.image_paths[-1], exposure_factor)
 

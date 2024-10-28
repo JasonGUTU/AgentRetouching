@@ -190,6 +190,102 @@ def white(input_image_path: str, output_image_path: str, white_factor: float):
     output_image.save(output_image_path)
     print(output_image_path)
 
+def tone(input_image_path: str, output_image_path: str, tone_factor: float):
+    """
+    @2024/10/27
+    Adjust the tone of the image.
+    -- input_image_path: str, the path of the input image.
+    -- output_image_path: str, the path of the output image.
+    -- tone_factor: float, the factor to adjust the tone. [-150, 150]
+    """
+    img_raw = cv2.imread(input_image_path)
+    value = -1 * tone_factor
+    b, g, r = cv2.split(img_raw)
+    
+    if value >= 0:
+        lim = 255 - value
+        g[g > lim] = 255
+        g[g <= lim] += value
+      
+    else:
+        lim = 0 - value
+        g[g < lim] = 0
+        g[g >= lim] -= abs(value)
+
+    
+    image = cv2.merge((b, g, r))
+    img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    output_image = Image.fromarray(img)
+    output_image.save(output_image_path)
+    print(output_image_path)
+
+def color_temperature(input_image_path: str, output_image_path: str, color_temperature_factor: float):
+    """
+    @2024/10/27
+    Adjust the color temperature of the image.
+    -- input_image_path: str, the path of the input image.
+    -- output_image_path: str, the path of the output image.
+    -- color_temperature_factor: float, the factor to adjust the color temperature. [2000, 50000]
+    !! We set the original color temperature to 6000K.
+    """
+    img_raw = cv2.imread(input_image_path)
+    img = cv2.cvtColor(img_raw, cv2.COLOR_BGR2RGB)
+    original_temp = 6000
+    value = np.clip(color_temperature_factor, 2000, 50000)  # Ensure value is within the specified range
+    if value > original_temp:
+        value = ((value - original_temp) / (50000 - original_temp)) * 100  # Map to 0-100
+    else:
+        value = ((value - original_temp) / (original_temp - 2000)) * 100  # Map to -100-0
+    print(value)
+    value = np.round(value)  # Convert to uint8 to avoid casting issues
+    b, g, r = cv2.split(img)
+    value = int(-1 * value)
+    print(value)
+    if value >= 0:
+        lim = 255 - value
+        r[r > lim] = 255
+        r[r <= lim] += value
+        
+        lim1 = 0 + value
+        b[b < lim1] = 0
+        b[b >= lim1] -= value
+        
+    else:
+        lim = 0 - value
+        r[r < lim] = 0
+        r[r >= lim] -= abs(value)
+        
+        lim = 255 - abs(value)
+        b[b > lim] = 255
+        b[b <= lim] += abs(value)
+
+    image = cv2.merge((b, g, r))
+    #image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)  # Convert to RGB before saving
+    output_image = Image.fromarray(image)
+    output_image.save(output_image_path)
+    print(output_image_path)
+
+def exposure(input_image_path: str, output_image_path: str, exposure_factor: float):
+    """
+    @2024/10/27
+    Adjust the exposure of the image.
+    -- input_image_path: str, the path of the input image.
+    -- output_image_path: str, the path of the output image.
+    -- exposure_factor: float, the factor to adjust the exposure. [-5, 5]
+    """
+    with Image.open(input_image_path) as img:
+        # Convert to NumPy array
+        img_np = np.array(img)
+        gamma = 1.0 / (1.0 + exposure_factor) if exposure_factor >= 0 else 1.0 - exposure_factor
+
+        gamma_table = [np.power(x / 255.0, gamma) * 255.0 for x in range(256)]
+        gamma_table = np.round(np.array(gamma_table)).astype(np.uint8)
+        adjusted_img = cv2.LUT(img_np, gamma_table)
+
+        adjusted_img = Image.fromarray(adjusted_img)
+        
+        adjusted_img.save(output_image_path)
+        print(output_image_path)
 
 if __name__ == "__main__":
     saturation("berowra-landscape-photography.jpg", "cache/test/000.jpg", 100)
@@ -198,3 +294,6 @@ if __name__ == "__main__":
     contrast("berowra-landscape-photography.jpg", "cache/test/003.jpg", -100)
     black("berowra-landscape-photography.jpg", "cache/test/004.jpg", -40)
     white("berowra-landscape-photography.jpg", "cache/test/005.jpg", 100)
+    tone("berowra-landscape-photography.jpg", "cache/test/006.jpg", 30)
+    color_temperature("berowra-landscape-photography.jpg", "cache/test/007.jpg", 1000)
+    exposure("berowra-landscape-photography.jpg", "cache/test/008.jpg", 1)
