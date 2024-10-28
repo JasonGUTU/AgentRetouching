@@ -503,18 +503,20 @@ class ImageProcessingToolBoxes:
                 - Softening intense whites for a balanced look
                 - Bringing out subtle details in bright regions
                 
-                This adjustment modifies the brightest regions of the image, with positive values intensifying whites and negative values reducing their brightness.
+                This adjustment modifies the brightest regions of the image, with positive values intensifying whites and negative values softening them.
             """,
             "parameters": {
                 "type": "object",
                 "properties": {
                     "white_factor": {
-                        "type": "float",
+                        "type": "int",
                         "description": """
                             Controls the intensity of white adjustment, similar to Lightroom's Whites slider:
-                            - < 1: Reduces white intensity
-                            - 1: Original white level
-                            - > 1: Increases white intensity
+                            - -100: Minimum white level (reduced highlights)
+                            - -50: Moderately softened highlights
+                            - 0: Original white level
+                            - 50: Increased white intensity
+                            - 100: Maximum white intensity (brightest highlights)
                         """,
                     },
                     "reason": {
@@ -526,7 +528,7 @@ class ImageProcessingToolBoxes:
                 },
                 "required": ["white_factor", "reason"]
             }
-        }
+        } 
     ])
     def adjust_whites(self, white_factor, reason):
         new_output_path = f"{len(self.image_paths)}_{self.image_name}_whites_{white_factor}.png"
