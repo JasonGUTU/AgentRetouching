@@ -2,6 +2,7 @@ import base64
 import os
 import json
 
+from PIL import Image, ImageEnhance, ExifTags
 import openai
 
 from Utils import base64_encode_image
@@ -13,6 +14,7 @@ class AgentClient:
         self.model = model
         self.debug = debug
         self.toolbox_instance = toolbox_instance
+        self.total_tokens = []
 
     def create_chat_completion(self, messages, tools, tool_choice="required", model=None, max_tokens=None):
         params = {
@@ -25,6 +27,9 @@ class AgentClient:
             params["max_tokens"] = max_tokens
         
         completion = self.client.chat.completions.create(**params)
+
+        tokens = completion.usage.total_tokens
+        self.total_tokens.append(tokens)
 
         if self.debug:
             print(f"Parameters: {json.dumps(params, indent=2, ensure_ascii=False)}")
@@ -53,8 +58,9 @@ class AgentClient:
 
         if run_tool:
             self.parse_function_call(completion, self.toolbox_instance)
+            return json.loads(completion.choices[0].message.tool_calls[0].function.arguments)["response"]
         else:
-            return completion
+            return json.loads(completion.choices[0].message.tool_calls[0].function.arguments)["response"]
         
     def agent_get_plan(self, system_prompt, user_prompt=None, provide_image=True, history_messages=True, run_tool=True):
         """
@@ -84,13 +90,35 @@ class AgentClient:
         else:
             return completion
         
-    def agent_reflection_plan(self, system_prompt, user_prompt=None, current_function_name=None, provide_image=True, history_messages=True, run_tool=True):
+    def agent_reflection_plan(self, system_prompt, user_prompt=None, current_function_name=None, provide_image=True, history_messages=True, run_tool=True, combine_image=True):
         """
         Handles the interaction between the agent and the user to reflect on a processing plan.
         """
-        image_path = self.toolbox_instance.get_current_image_path() if provide_image else None
+
+        if combine_image and provide_image:
+            image_path_old, image_path_new = self.toolbox_instance.get_current_image_path(image_number=2)
+            with Image.open(image_path_old) as img1, Image.open(image_path_new) as img2:
+                height = min(img1.size[1], img2.size[1])
+                width1 = int(img1.size[0] * height / img1.size[1])
+                width2 = int(img2.size[0] * height / img2.size[1])
+                
+                img1 = img1.resize((width1, height))
+                img2 = img2.resize((width2, height))
+                
+                new_img = Image.new('RGB', (width1 + width2, height))
+                new_img.paste(img1, (0, 0))
+                new_img.paste(img2, (width1, 0))
+                
+                latest_image = os.path.basename(image_path_new)
+                step_number = latest_image.split('_')[0]
+                comparison_path = os.path.join(self.toolbox_instance.output_dir_path, f"{step_number}_comparison.png")
+                new_img.save(comparison_path)
+                image_path_new = comparison_path
+        else:
+            image_path_new = self.toolbox_instance.get_current_image_path() if provide_image else None
+
         past_messages = self.toolbox_instance.history_messages if history_messages else None
-        messages = self.build_messages(system_prompt, user_prompt, image_path, past_messages)
+        messages = self.build_messages(system_prompt, user_prompt, image_path_new, past_messages)
         completion = self.create_chat_completion(messages, self.toolbox_instance.get_tool_docs([self.toolbox_instance.satisfactory, self.toolbox_instance.undo_step]), tool_choice="required")
 
         if run_tool:

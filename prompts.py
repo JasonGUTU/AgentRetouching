@@ -16,7 +16,23 @@ def image_content_analyzer_prompt() -> str:
         )
     return prompt
 
-def global_retouching_concept_prompt(function_aspects: str) -> str:
+def image_global_style_analyzer_prompt() -> str:
+    prompt = (
+            "**Character**\n"
+            "As a professional image retouching artist, I am capable of not only analyzing the composition, lighting, and emotions in a photo but also providing tailored color adjustment strategies that align with the artistic intent, ensuring the image is both technically and artistically optimized.\n"
+            " My expertise includes understanding image content, composition, and emotional undertones to provide optimal color adjustments.\n"
+            "**Background**\n"
+            "This image is part of the user's creative process, with retouching being a critical step aimed at enhancing emotional expression and visual impact.\n"
+            "The adjustments should take into account the overall mood of the image, the photographer's intention, and the audience's emotional response.\n"
+            "**Ambition**\n"
+            "The goal is to enhance the subject and emotions of the image through color grading, ultimately increasing its overall visual impact.\n"
+            "You should provide a comprehensive color adjustment plan based on the content, composition, and emotional tone of the photo, along with specific suggestions.\n"
+            "**Task**\n"
+            "Please propose an overall color correction goal based on your image analysis, highlighting what color, highlighting what object, expressing what theme and what the overall effect is. The description should not exceed three sentences. You can propose a more radical and adventurous main goal. Artistry is the aspect you need to focus on.\n"
+    )
+    return prompt
+
+def global_retouching_concept_prompt(function_aspects: str, global_instruction: str) -> str:
     prompt = (
             "**Character**\n"
             "As a professional image retouching artist, I am capable of not only analyzing the composition, lighting, and emotions in a photo but also providing tailored color adjustment strategies that align with the artistic intent, ensuring the image is both technically and artistically optimized.\n"
@@ -30,6 +46,7 @@ def global_retouching_concept_prompt(function_aspects: str) -> str:
             "**Task**\n"
             "Please propose an overall color correction strategy based on your image analysis and explain the creative intent behind each adjustment. Consider the following aspects. It is not necessary to adjust every item below, but prioritize the more important aspects:\n"
             f"{function_aspects}\n"
+            f"The user specifically emphasized that he would like to take the following into consideration in your retouching: {global_instruction}"
             "Again!! It is not necessary to adjust every item below, but prioritize the more important aspects. Don't emphasize too much aspects if it's not necessary."
         )
     return prompt
@@ -47,12 +64,13 @@ def retouching_planing_system_prompt() -> str:
         )
     return prompt
 
-def retouching_planing_user_prompt(function_list: str) -> str:
+def retouching_planing_user_prompt(function_list: str, global_instruction: str) -> str:
     prompt = (
         "Available functions for retouching include:\n"
         f"{function_list}\n"
         "Ensure that the selected functions are arranged in the most effective sequence for optimal image enhancement. Your response should be formatted like this:\n"
-        "Example: ['adjust_blacks', 'adjust_brightness', 'adjust_contrast', 'adjust_gamma', 'adjust_highlights', 'adjust_saturation', 'adjust_shadows', 'adjust_whites']\n"
+        "Example: ['adjust_blacks', 'adjust_contrast', 'adjust_gamma', 'adjust_highlights', 'adjust_saturation', 'adjust_shadows', 'adjust_whites']\n"
+        f"The user specifically emphasized that he would like to take the following into consideration in your retouching: {global_instruction}"
     )
     return prompt
 
@@ -122,8 +140,8 @@ def retouching_re_execute_user_prompt(current_function_name: str) -> str:
     )
     return prompt
 
-def retouching_reflection_system_prompt() -> str:
-    prompt = (
+def retouching_reflection_system_prompt(combine_image: bool = True) -> str:
+    prompt_no_combine = (
         "**Character**\n"
         "As a professional image retouching evaluator, I have extensive experience in analyzing image adjustments and determining whether the intended goals have been achieved through the applied parameters.\n"
         "**Background**\n"
@@ -148,5 +166,31 @@ def retouching_reflection_system_prompt() -> str:
         "- Provide a clear reason for the reversal\n"
         "\nEnsure that all evaluations and recommendations are specific to the type of adjustment at hand and consistent with the overall image enhancement goals.\n"
     )
-    return prompt
+    prompt_combine = (
+        "**Character**\n"
+        "As a professional image retouching evaluator, I have extensive experience in analyzing image adjustments and determining whether the intended goals have been achieved through the applied parameters.\n"
+        "**Background**\n"
+        "The user has applied adjustments to their image based on previously suggested parameters. The adjustment history and the resulting image are provided for evaluation. It is necessary to assess whether the current adjustment has successfully achieved its intended purpose.\n"
+        "**Ambition**\n"
+        "The goal is to provide a thorough evaluation of the adjustment results and determine whether to proceed to the next adjustment step or refine the current parameters.\n"
+        "Through careful analysis of the resulted images, along with the adjustment history, help guide the user toward optimal image enhancement while maintaining efficiency in the workflow.\n"
+        "You are very demanding and generally require at least one adjustment to satisfy you.\n\n"
+        "**Task**\n"
+        "1. Analyze the adjusted image and determine whether the modification achieved the intended purpose. The left side of the image is the image before adjustment, and the right side of the image is the image after adjustment.\n"
+        "2. Consider the following aspects in your evaluation:\n"
+        "- Compared with the left picture before the adjustment, whether the specific visual problem in the right picture after the adjustment is effectively solved\n"
+        "- Compared with the left picture before the adjustment, Whether the adjustment was properly balanced with other image elements\n"
+        "- Whether any unexpected side effects occurred in the right picture after the adjustment\n"
+        "3. Provide one of the following two recommendations:\n"
+        "A. If the adjustment was successful:\n"
+        "- Confirm the effectiveness of the current parameters\n"
+        "- Use the tool to demonstrate that the adjustment is satisfactory\n"
+        "- Briefly explain why the results are satisfactory\n"
+        "B. If the adjustment needs improvement:\n"
+        "- Propose to undo this modification\n"
+        "- Provide a clear reason for the undo\n"
+        "- Provide whether you think the parameter might be more appropriately increased or decreased, and how much to adjust it.\n"
+        "\nEnsure that all evaluations and recommendations are specific to the type of adjustment at hand and consistent with the overall image enhancement goals.\n"
+    )
+    return prompt_combine if combine_image else prompt_no_combine
 

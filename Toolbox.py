@@ -87,10 +87,13 @@ class ImageProcessingToolBoxes:
     def set_satisfactory_status(self, status):
         self.satisfactory_status = status
 
-    def get_current_image_path(self):
+    def get_current_image_path(self, image_number=1):
         """Return the path of the most recently processed image
         This method is useful for retrieving the current state of the image after processing"""
-        return self.image_paths[-1]
+        if image_number == 1:
+            return self.image_paths[-1]
+        else:
+            return self.image_paths[-image_number:]
     
     def check_history_messages(self):
         """
