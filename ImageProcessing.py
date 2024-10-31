@@ -3,6 +3,8 @@ from typing import List, Callable
 import numpy as np
 import cv2
 from PIL import Image, ImageEnhance
+import rawpy
+import imageio
 
 def saturation(input_image_path: str, output_image_path: str, saturation_factor: float):
     """
@@ -11,17 +13,41 @@ def saturation(input_image_path: str, output_image_path: str, saturation_factor:
     -- input_image_path: str, the path of the input image.
     -- output_image_path: str, the path of the output image.
     -- saturation_factor: float, the factor to adjust the saturation. [-100, 100]
+    @2024/10/31
+    Add DNG (16-bit) Image Support.
     """
-    ## !! Factor [0, 2] <- Lightroom  [-100, 100]
-    saturation_factor = 0.01 * saturation_factor + 1
-    with Image.open(input_image_path) as img:
+    if input_image_path.lower().endswith('.dng'):
+        saturation_factor = 0.01 * saturation_factor + 1
+        with rawpy.imread(input_image_path) as raw:
+            img = raw.postprocess(output_bps=16)
+        img_normalized = img / 65535.0  
+
+        hsv = cv2.cvtColor(img_normalized.astype(np.float32), cv2.COLOR_BGR2HSV)
+        hsv[..., 1] *= saturation_factor 
+        hsv[..., 1] = np.clip(hsv[..., 1], 0, 1)  
+
+        img_adjusted = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+        img_adjusted = (img_adjusted * 65535).astype(np.uint16)
+
+        if output_image_path.lower().endswith('.dng'):
+            raise ValueError("Output image path cannot be a DNG file. The DNG format file cannot be saved. You can save it as TIFF first.")
+        elif output_image_path.lower().endswith('.tiff'):
+            imageio.imsave(output_image_path, img_adjusted, format='TIFF')
+        else:
+            print("You are saving a 16-bit image to an 8-bit image format, warning!")
+            img_8bit = (img_adjusted / 256).astype(np.uint8)  
+            output_image = Image.fromarray(img_8bit)
+            output_image.save(output_image_path)
+    else:
+        img = Image.open(input_image_path)
+        ## !! Factor [0, 2] <- Lightroom  [-100, 100]
+        saturation_factor = 0.01 * saturation_factor + 1
         # Enhance the image's saturation
         enhancer = ImageEnhance.Color(img)
         img_enhanced = enhancer.enhance(saturation_factor)
         # Save the adjusted image
         img_enhanced.save(output_image_path)
-        print(output_image_path)
-        #print(f"The processed image has been saved as '{output_image_path}'")
+    print(output_image_path)
 
 def shadows(input_image_path: str, output_image_path: str, shadow_factor: float):
     """
@@ -30,39 +56,76 @@ def shadows(input_image_path: str, output_image_path: str, shadow_factor: float)
     -- input_image_path: str, the path of the input image.
     -- output_image_path: str, the path of the output image.
     -- shadow_factor: float, the factor to adjust the shadows. [-100, 100]
+    @2024/10/31
+    Add support for DNG (16-bit) images.
     """
-    ## !! Not need to be normalized. Factor == Lightroom  [-100, 100]
-    img_raw = cv2.imread(input_image_path)
-    img = cv2.cvtColor(img_raw, cv2.COLOR_BGR2RGB)
-    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    h, s, v = cv2.split(hsv)
-    value = int(shadow_factor * 0.4)
-    
-    lim1 = 40
-    lim2 = 120
-    
-    if value < 0:   
-        v[v <= lim1] += abs(value)
-        v[v <= lim2] -= abs(value)
-        if abs(value) > lim1 // 2:
-            v[v >= lim2] -= int(0.2 * abs(value))
-            v[v <= int(0.2 * abs(value))] = int(0.2 * abs(value))
-            v[v <= lim1] -= int(0.2 * abs(value))
+    # Check if the format is DNG and read the 16-bit image
+    if input_image_path.lower().endswith('.dng'):
+        shadow_factor = 0.01 * shadow_factor
+        with rawpy.imread(input_image_path) as raw:
+            img = raw.postprocess(output_bps=16)
+        img_normalized = img / 65535.0
+
+        hsv = cv2.cvtColor(img_normalized.astype(np.float32), cv2.COLOR_RGB2HSV)
+        h, s, v = cv2.split(hsv)
+        value = int(shadow_factor * 40)
         
+        lim1, lim2 = 0.06, 0.18  
+        
+        if value < 0:
+            v[v <= lim1] += abs(value)
+            v[v <= lim2] -= abs(value)
+            if abs(value) > lim1 / 2:
+                v[v >= lim2] -= int(0.2 * abs(value))
+                v[v <= lim1] -= int(0.2 * abs(value))
+        else:
+            v[v <= lim2] += value
+            v[v <= lim1] -= value
+            if value > lim1 / 2:
+                v[v <= lim1] += int(0.2 * value)
+                v[v >= lim2] += int(0.2 * value)
+
+        final_hsv = cv2.merge((h, s, v))
+        img_adjusted = cv2.cvtColor(final_hsv, cv2.COLOR_HSV2RGB)
+        img_adjusted = (img_adjusted * 65535).astype(np.uint16)
+
+        if output_image_path.lower().endswith('.tiff'):
+            imageio.imwrite(output_image_path, img_adjusted, format='TIFF')
+        else:
+            img_8bit = (img_adjusted / 256).astype(np.uint8)
+            output_image = Image.fromarray(img_8bit)
+            output_image.save(output_image_path)
     else:
-        v[v <= lim2] += value
-        v[v <= lim1] -= value 
-        if value > lim1 // 2:
-            v[v <= lim1] += int(0.2 * value)
-            v[v >= lim2] += int(0.2 * value)
+        # 8-bit image
+        img_raw = cv2.imread(input_image_path)
+        img = cv2.cvtColor(img_raw, cv2.COLOR_BGR2RGB)
+        hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+        h, s, v = cv2.split(hsv)
+        value = int(shadow_factor * 0.4)
+        
+        lim1, lim2 = 40, 120
+        
+        if value < 0:   
+            v[v <= lim1] += abs(value)
+            v[v <= lim2] -= abs(value)
+            if abs(value) > lim1 // 2:
+                v[v >= lim2] -= int(0.2 * abs(value))
+                v[v <= int(0.2 * abs(value))] = int(0.2 * abs(value))
+                v[v <= lim1] -= int(0.2 * abs(value))
+        else:
+            v[v <= lim2] += value
+            v[v <= lim1] -= value 
+            if value > lim1 // 2:
+                v[v <= lim1] += int(0.2 * value)
+                v[v >= lim2] += int(0.2 * value)
 
+        final_hsv = cv2.merge((h, s, v))
+        img = cv2.cvtColor(final_hsv, cv2.COLOR_HSV2RGB)
+        output_image = Image.fromarray(img)
+        output_image.save(output_image_path)
 
-    final_hsv = cv2.merge((h, s, v))
-    img = cv2.cvtColor(final_hsv, cv2.COLOR_HSV2BGR)
-    output_image = Image.fromarray(img)
-    output_image.save(output_image_path)
     print(output_image_path)
-    #print(f"The processed image has been saved as '{output_image_path}'")
+
 
 def highlights(input_image_path: str, output_image_path: str, highlight_factor: float):
     """
@@ -285,11 +348,11 @@ def exposure(input_image_path: str, output_image_path: str, exposure_factor: flo
         adjusted_img = Image.fromarray(adjusted_img)
         
         adjusted_img.save(output_image_path)
-        print(output_image_path)
+    print(output_image_path)
 
 if __name__ == "__main__":
-    saturation("berowra-landscape-photography.jpg", "cache/test/000.jpg", 100)
-    shadows("berowra-landscape-photography.jpg", "cache/test/001.jpg", -100)
+    saturation("test/a0001-jmac_DSC1459.dng", "cache/test/000.jpg", 100)
+    shadows("test/a0001-jmac_DSC1459.dng", "cache/test/001.jpg", -100)
     highlights("berowra-landscape-photography.jpg", "cache/test/002.jpg", 100)
     contrast("berowra-landscape-photography.jpg", "cache/test/003.jpg", -100)
     black("berowra-landscape-photography.jpg", "cache/test/004.jpg", -40)

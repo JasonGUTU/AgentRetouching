@@ -1,7 +1,12 @@
 import base64
 import os
 import json
+import numpy as np
+def apply_shadow_curve(value, shadow_factor, max_val):
 
+    scale = 1 + shadow_factor / 100
+    midpoint = max_val / 4  
+    return max_val / (1 + np.exp(-scale * (value - midpoint) / max_val))
 
 def base64_encode_image(image_path):
     """
