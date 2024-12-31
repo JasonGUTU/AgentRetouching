@@ -8,8 +8,20 @@ import openai
 from Utils import base64_encode_image
 
 
+# class AgentClientLangChain:
+#     def __init__(self, api_key, model="gpt-4o-2024-08-06", toolbox_instance=None, debug=False):
+#         self.llm = ChatOpenAI(model=model, api_key=api_key)
+#         self.model = model
+#         self.debug = debug
+#         self.toolbox_instance = toolbox_instance
+#         self.total_tokens = []
+
+#     def create_chat_completion(self, messages, tools, tool_choice="required", model=None, max_tokens=None):
+        
+
+
 class AgentClient:
-    def __init__(self, api_key, model="gpt-4o-2024-08-06", toolbox_instance=None, debug=False):
+    def __init__(self, api_key, model="gpt-4o-2024-11-20", toolbox_instance=None, debug=False):
         self.client = openai.OpenAI(api_key=api_key)
         self.model = model
         self.debug = debug
@@ -36,7 +48,7 @@ class AgentClient:
 
         return completion
     
-    def agent_interaction(self, system_prompt, user_prompt=None, provide_image=True, history_messages=True, run_tool=True):
+    def agent_interaction(self, system_prompt, user_prompt=None, provide_image=True, history_messages=True, run_tool=True, histo_image=False):
         """
         Handles the interaction between the agent and the user.
         This is for the conversation without additional function calling, only `func_to_return_responses` is used.
@@ -51,7 +63,14 @@ class AgentClient:
             If run_tool is False, returns the completion object.
             Otherwise, executes the parsed function call.
         """
-        image_path = self.toolbox_instance.get_current_image_path() if provide_image else None
+        if histo_image:
+            image_path = self.toolbox_instance.get_current_histo_image_path()
+        else:
+            if provide_image:
+                image_path = self.toolbox_instance.get_current_image_path()
+            else:
+                image_path = None
+
         past_messages = self.toolbox_instance.history_messages if history_messages else None
         messages = self.build_messages(system_prompt, user_prompt, image_path, past_messages)
         completion = self.create_chat_completion(messages, self.toolbox_instance.get_tool_docs([self.toolbox_instance.func_to_return_responses]), tool_choice="required")

@@ -3,6 +3,10 @@ from typing import List, Callable
 import numpy as np
 from Levenshtein import distance
 
+import cv2
+import matplotlib.pyplot as plt
+from io import BytesIO
+
 from PIL import Image, ImageEnhance, ExifTags
 from ImageProcessing import *
 
@@ -22,6 +26,7 @@ class ImageProcessingToolBoxes:
         self.output_dir_path = output_dir_name
         self.extension_name = extension_name
         self.save_high_resolution = save_high_resolution
+
         if not os.path.exists(output_dir_name):
             os.makedirs(output_dir_name)
         else:
@@ -31,7 +36,8 @@ class ImageProcessingToolBoxes:
                 raise FileExistsError(f"The directory '{output_dir_name}' already exists.")
 
         self.image_paths = []  # List of image paths for OpenAI to view
-        self.hr_image_paths = []  # List of high-resolution image paths for OpenAI to view
+        self.hr_image_paths = []  # List of high-resolution image paths
+        self.histogram_paths = []  # List of histogram paths
         self.processing_log = []  # Log of processing steps
         self.function_calls = []  # Record of function calls
         self.history_messages = []  # Record of conversation history
@@ -45,47 +51,69 @@ class ImageProcessingToolBoxes:
         self.satisfactory_status = False
 
         # Load original image and downsample
-        with Image.open(image_path) as img:
-            width, height = img.size
-            scale_factor = min(512/width, 512/height)
-            new_width, new_height = int(width * scale_factor), int(height * scale_factor)
-            img_resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
+        _, original_extension = os.path.splitext(image_path)
+        self.original_extension = original_extension[1:]  # 去掉点号
 
-            # 确保图片方向正确并保存
-            if hasattr(img, '_getexif'): # 检查是否有EXIF数据
-                try:
+        # 检查图像是否为16位
+        if img.dtype == np.uint16:
+            # 将16位图像转换为8位
+            img_8bit = (img / 256).astype(np.uint8)
+
+        # Resize image to 512x512
+        height, width = img.shape[:2]
+        scale_factor = min(512/width, 512/height)
+        new_width, new_height = int(width * scale_factor), int(height * scale_factor)
+        img_resized = cv2.resize(img, (new_width, new_height), interpolation=cv2.INTER_LANCZOS4)
+
+        # 处理EXIF方向信息
+        try:
+            with Image.open(image_path) as pil_img:
+                if hasattr(pil_img, '_getexif'):
                     for orientation in ExifTags.TAGS.keys():
                         if ExifTags.TAGS[orientation]=='Orientation':
                             break
-                    exif=dict(img._getexif().items())
+                    exif=dict(pil_img._getexif().items())
 
                     if orientation in exif:
                         if exif[orientation] == 3:
-                            img_resized = img_resized.rotate(180, expand=True)
-                            img = img.rotate(180, expand=True)
+                            img_resized = cv2.rotate(img_resized, cv2.ROTATE_180)
+                            img = cv2.rotate(img, cv2.ROTATE_180)
                         elif exif[orientation] == 6:
-                            img_resized = img_resized.rotate(270, expand=True)
-                            img = img.rotate(270, expand=True)
+                            img_resized = cv2.rotate(img_resized, cv2.ROTATE_90_COUNTERCLOCKWISE)
+                            img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
                         elif exif[orientation] == 8:
-                            img_resized = img_resized.rotate(90, expand=True)
-                            img = img.rotate(90, expand=True)
-                except (AttributeError, KeyError, IndexError):
-                    pass # 处理没有EXIF的情况
+                            img_resized = cv2.rotate(img_resized, cv2.ROTATE_90_CLOCKWISE)
+                            img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+        except (AttributeError, KeyError, IndexError):
+            pass
 
-            resized_path = os.path.join(self.output_dir_path, f"0_{self.image_name}_resized.{self.extension_name}")
-            img_resized.save(resized_path)
-            self.image_paths.append(resized_path)
+        resized_path = os.path.join(self.output_dir_path, f"0_{self.image_name}_resized.{self.extension_name}")
+        cv2.imwrite(resized_path, img_resized)
+        self.image_paths.append(resized_path)
 
-            hr_path = os.path.join(self.output_dir_path, f"0_{self.image_name}_hr.{self.extension_name}")
-            self.hr_image_paths.append(hr_path)
-            if self.save_high_resolution:
-                img.save(hr_path)
+        hr_path = os.path.join(self.output_dir_path, f"0_{self.image_name}_hr.{self.original_extension}")
+        self.hr_image_paths.append(hr_path)
+        if self.save_high_resolution:
+            cv2.imwrite(hr_path, img)
+
+        histogram_path = os.path.join(self.output_dir_path, f"0_{self.image_name}_histogram.{self.extension_name}")
+        self.histogram_paths.append(histogram_path)
+        self.plot_histogram(self.image_paths[-1]).save(self.histogram_paths[-1])
 
     def set_plan_status(self, status):
         self.plan_status = status
 
     def set_satisfactory_status(self, status):
         self.satisfactory_status = status
+
+    def get_current_histo_image_path(self, image_number=1):
+        """Return the path of the histogram of the most recently processed image
+        This method is useful for retrieving the current state of the image after processing"""
+        if image_number == 1:
+            return self.histogram_paths[-1]
+        else:
+            return self.histogram_paths[-image_number]
 
     def get_current_image_path(self, image_number=1):
         """Return the path of the most recently processed image
@@ -109,7 +137,7 @@ class ImageProcessingToolBoxes:
         """
         with open(self.log_file_path, 'a') as log_file:
             log_file.write(step_description + "\n")
-    
+
     def get_all_tool_docs(self):
         """
         Get all tool documentation.
@@ -121,7 +149,7 @@ class ImageProcessingToolBoxes:
             if callable(attr) and hasattr(attr, 'tool_doc'):
                 tool_docs += attr.tool_doc
         return tool_docs
-    
+
     @staticmethod
     def get_tool_docs(tools: List[Callable]):
         
@@ -265,6 +293,95 @@ class ImageProcessingToolBoxes:
         self.plan_status = "finished"
         if self.processing_plan:
             self.processing_plan = self.processing_plan[1:]
+
+    @staticmethod
+    def plot_histogram(img_path, bins=256, auxiliary_lines=True, line_positions=None):
+        """
+        Read an image (can be 8-bit or 16-bit grayscale) and plot a Photoshop-style histogram.
+        - bins: Number of bins, default 256 (suitable for both 8-bit and 16-bit after binning).
+        - auxiliary_lines: Whether to add auxiliary lines (default True)
+        - line_positions: Positions of auxiliary lines (in bins). If None, defaults to 1/4, 1/2, 3/4.
+        Returns a PIL.Image object.
+        
+        Core logic:
+        1. Read image (cv2.IMREAD_UNCHANGED) to preserve original bit depth
+        2. Check dtype: 8-bit -> [0,256], 16-bit -> [0,65536]
+        3. Use cv2.calcHist for histogram calculation (with specified bins)
+        4. Plot using bar chart, no axis ticks, keep frame
+        5. Add auxiliary lines (axvline) as needed, can customize width, color etc.
+        """
+        image = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
+        if image is None:
+            raise ValueError(f"Can not read image: {img_path}")
+        
+        if len(image.shape) == 3:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        if image.dtype == np.uint8:
+            hist_range = [0, 256]      # 8位范围
+            hist_bins = bins
+        elif image.dtype == np.uint16:
+            hist_range = [0, 65536]    # 16位范围
+            hist_bins = bins
+        else:
+            raise ValueError(f"Image is not 8-bit or 16-bit grayscale, dtype={image.dtype}")
+        
+        hist = cv2.calcHist([image], [0], None, [hist_bins], hist_range)
+
+        fig = plt.figure(figsize=(6, 6), facecolor='white')
+        ax = fig.add_subplot(111)
+
+        ax.bar(
+            x=range(hist_bins),
+            height=hist[:, 0],
+            color='black',
+            width=1
+        )
+
+        ax.set_xlim([0, hist_bins])
+        ax.set_ylim([0, hist.max() * 1.05])
+
+
+        ax.spines['top'].set_visible(True)
+        ax.spines['right'].set_visible(True)
+        ax.spines['bottom'].set_visible(True)
+        ax.spines['left'].set_visible(True)
+
+        # 设置外框颜色和线宽
+        for spine in ax.spines.values():
+            spine.set_color('black')
+            spine.set_linewidth(2)  # 让外框线更粗
+
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+        # 7. 如果需要辅助线，就添加
+        if auxiliary_lines:
+            # 如果用户没指定 line_positions，就默认在 1/4、1/2、3/4 处
+            if not line_positions:
+                line_positions = [
+                    hist_bins // 4, 
+                    hist_bins // 2, 
+                    hist_bins * 3 // 4
+                ]
+            for x_val in line_positions:
+                ax.axvline(
+                    x=x_val, 
+                    color='gray', 
+                    linestyle='--', 
+                    linewidth=2  # 线条也加粗
+                )
+
+        # 8. 转换为 PIL.Image 并返回
+        buf = BytesIO()
+        plt.savefig(buf, format='png', bbox_inches='tight')
+        buf.seek(0)
+        pil_image = Image.open(buf).copy()
+
+        plt.close(fig)
+        buf.close()
+
+        return pil_image
 
     @tool_doc([
         {

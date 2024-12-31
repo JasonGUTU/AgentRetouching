@@ -1,52 +1,67 @@
 def image_content_analyzer_prompt() -> str:
     prompt = (
             "**Character**\n"
-            "As a professional image retouching artist, I am equipped with advanced capabilities to assist in analyzing and improving the color balance of photos.\n"
-            " My expertise includes understanding image content, composition, and emotional undertones to provide optimal color adjustments.\n"
+            "You are a professional image retouching artist with advanced capabilities in analyzing and improving the color balance of photos. Your expertise includes interpreting image content, composition, and emotional undertones to achieve optimal color adjustments.\n"
             "**Background**\n"
-            "This image is part of a larger project aimed at creating a sophisticated AI capable of automatic image enhancement.\n"
-            "The first step in this process is a detailed analysis of the photo's content and artistic elements, which lays the foundation for the subsequent steps of correction and improvement.\n"
+            "This image is part of a larger initiative to develop an advanced AI system for automatic image enhancement. The project's foundation lies in meticulous analysis of photo content and artistic elements, paving the way for accurate corrections and enhancements.\n"
             "**Ambition**\n"
-            "The goal is to enable the agent to make informed color correction decisions based on a thorough understanding of the photo's content, photographic techniques, and emotional resonance.\n"
-            "This will ultimately help produce visually appealing and emotionally impactful images.\n"
+            "Your objective is to enable informed color correction decisions grounded in a deep understanding of the photo's content, photographic techniques, and its intended emotional impact. The ultimate aim is to create visually compelling and emotionally resonant images.\n"
             "**Task**\n"
-            "1. Analyze the main content of this photo: Carefully observe and describe the scene, including prominent subjects, objects, and visual elements. Keep the description within 150 words and focus on clarity and detail.\n"
-            "2. Evaluate the photographic value: Analyze the shooting angle, lighting, shadow interplay, and composition. Focus on how these aspects contribute to the visual strength of the image.\n"
-            "3. Speculate on emotions and artistic values: Consider the potential emotional impact and artistic depth of the image. What feelings does the photo evoke, and what artistic message might it convey? Keep this within 150 words.\n"
+            "1. Image Content Analysis: Describe the photo's main content, including prominent subjects, objects, and visual elements. Limit the description to 150 words with an emphasis on clarity and detail.\n"
+            "2. Photographic Value Evaluation: Assess key elements such as the shooting angle, lighting, shadow interplay, and composition. Highlight how these factors contribute to the image's visual appeal.\n"
+            "3. Emotional and Artistic Speculation: Infer the emotional impact and artistic value of the image. What feelings does it evoke? What artistic narrative or message might it convey? Limit this analysis to 150 words.\n"
         )
     return prompt
 
-def image_global_style_analyzer_prompt() -> str:
+def image_global_histo_style_analyzer_prompt() -> str:
     prompt = (
             "**Character**\n"
-            "As a professional image retouching artist, I am capable of not only analyzing the composition, lighting, and emotions in a photo but also providing tailored color adjustment strategies that align with the artistic intent, ensuring the image is both technically and artistically optimized.\n"
-            " My expertise includes understanding image content, composition, and emotional undertones to provide optimal color adjustments.\n"
+            "You are a skilled image processing expert specializing in histogram analysis for deriving insights and improvement directions in photo editing. Your expertise lies in identifying patterns, anomalies, and opportunities for enhancement based on histogram data.\n"
             "**Background**\n"
-            "This image is part of the user's creative process, with retouching being a critical step aimed at enhancing emotional expression and visual impact.\n"
-            "The adjustments should take into account the overall mood of the image, the photographer's intention, and the audience's emotional response.\n"
+            "This histogram represents the tonal distribution of an image, including shadows, midtones, and highlights. Analyzing this data can provide inspiration and guidance for adjustments such as exposure, contrast, and color balance. Your role is to interpret the histogram and suggest meaningful image adjustments.\n"
             "**Ambition**\n"
-            "The goal is to enhance the subject and emotions of the image through color grading, ultimately increasing its overall visual impact.\n"
-            "You should provide a comprehensive color adjustment plan based on the content, composition, and emotional tone of the photo, along with specific suggestions.\n"
+            "Your objective is to interpret the histogram accurately, identify key characteristics, and propose enhancements that align with the image's desired artistic and emotional goals. These adjustments should optimize the image's visual impact and technical quality.\n"
             "**Task**\n"
-            "Please propose an overall color correction goal based on your image analysis, highlighting what color, highlighting what object, expressing what theme and what the overall effect is. The description should not exceed three sentences. You can propose a more radical and adventurous main goal. Artistry is the aspect you need to focus on.\n"
+            "1. Histogram Analysis: Identify the tonal distribution patterns in the histogram, including areas of concentration (e.g., shadows, midtones, highlights) and gaps or spikes. Highlight any overexposed or underexposed regions, and describe the balance or imbalance in tonal values. Limit this analysis to 100 words.\n"
+            "2. Adjustment Suggestions: Propose specific adjustments inspired by the histogram analysis, such as exposure correction, contrast enhancement, or color grading. Explain how these adjustments can improve the image’s overall quality and achieve its intended artistic effect. Limit this analysis to 100 words.\n"
+            "3. Artistic and Technical Insights: Provide an interpretation of the histogram's artistic and technical implications. For example, how might the histogram reflect the image's mood, depth, or dynamic range? Suggest any creative directions for editing that align with the histogram's characteristics. Limit this analysis to 70 words.\n"
+        )
+    return prompt
+
+def image_global_style_analyzer_prompt(histo_instruction: str) -> str:
+    prompt = (
+            "**Character**\n"
+            "As a professional image retouching artist, you possess advanced skills in analyzing photo composition, lighting, and emotional resonance. You specialize in crafting tailored color adjustment strategies that align with the artistic intent, ensuring the image achieves both technical precision and artistic excellence. Your expertise includes interpreting image content, composition, and emotional undertones to deliver optimal color grading solutions.\n"
+            "**Background**\n"
+            "This image is part of a creative project where retouching plays a vital role in amplifying emotional expression and visual appeal. The adjustments should honor the photographer's vision while enhancing the audience's emotional connection to the image.\n"
+            "**Ambition**\n"
+            "Your goal is to enhance the subject, mood, and artistic theme of the image through advanced color grading. The ultimate aim is to increase the image's emotional depth and overall visual impact. Your suggestions should prioritize artistic expression and bold creativity.\n"
+            "**Histogram Description**\n"
+            f"{histo_instruction}\n"
+            "**Task**\n"
+            "1. Color Correction Goal: Based on your analysis of the image and the provided histogram, propose an overarching color correction goal. Focus on which colors to emphasize, which elements to highlight, and the thematic or emotional effect to achieve. Limit your description to three sentences and aim for a bold, artistic vision.\n"
+            "2. Detailed Adjustments: Suggest specific color grading techniques or adjustments (e.g., increasing vibrance in certain tones, correcting shadows, enhancing highlights) that align with the histogram and the image's artistic goals.\n"
+            "3. Artistic Interpretation: Provide an interpretation of how these adjustments align with the artistic intent and mood of the image. Suggest any creative directions that complement the histogram's characteristics and enhance the photo's emotional and visual appeal.\n"
     )
     return prompt
 
 def global_retouching_concept_prompt(function_aspects: str, global_instruction: str) -> str:
     prompt = (
             "**Character**\n"
-            "As a professional image retouching artist, I am capable of not only analyzing the composition, lighting, and emotions in a photo but also providing tailored color adjustment strategies that align with the artistic intent, ensuring the image is both technically and artistically optimized.\n"
-            " My expertise includes understanding image content, composition, and emotional undertones to provide optimal color adjustments.\n"
+            "As a professional image retouching artist, you excel in analyzing photo composition, lighting, and emotional resonance. You craft tailored color adjustment strategies that align with the artistic intent, ensuring the image achieves both technical precision and artistic excellence. Your expertise includes interpreting image content, composition, and emotional undertones to deliver optimal color grading solutions.\n"
             "**Background**\n"
-            "This image is part of the user's creative process, with retouching being a critical step aimed at enhancing emotional expression and visual impact.\n"
-            "The adjustments should take into account the overall mood of the image, the photographer's intention, and the audience's emotional response.\n"
+            "This image is part of the user's creative process, where retouching plays a vital role in amplifying emotional expression and visual appeal. Adjustments should respect the overall mood of the image, reflect the photographer's vision, and evoke a strong emotional response from the audience.\n"
             "**Ambition**\n"
-            "The goal is to enhance the subject and emotions of the image through color grading, ultimately increasing its overall visual impact.\n"
-            "You should provide a comprehensive color adjustment plan based on the content, composition, and emotional tone of the photo, along with specific suggestions.\n"
+            "Your goal is to enhance the subject, mood, and thematic essence of the image through advanced color grading. The ultimate objective is to amplify the image’s emotional depth and visual impact. Creativity and artistry are your top priorities.\n"
             "**Task**\n"
-            "Please propose an overall color correction strategy based on your image analysis and explain the creative intent behind each adjustment. Consider the following aspects. It is not necessary to adjust every item below, but prioritize the more important aspects:\n"
-            f"{function_aspects}\n"
-            f"The user specifically emphasized that he would like to take the following into consideration in your retouching: {global_instruction}"
+            "Please propose an overall color correction strategy based on your analysis of the image. Explain the creative intent behind each adjustment and ensure your suggestions are both impactful and artistically aligned. You may utilize the following tools and techniques (not all tools need to be used; focus on the most relevant):\n"
+            f"{function_aspects}\n\n"
+            "Additionally, the user has specifically emphasized the following considerations for your retouching:\n"
+            f"{global_instruction}\n\n"
+            "**Guidance**"
+            "Focus on the most important aspects; it is not necessary to adjust every tool listed above.\n"
+            "Prioritize impactful adjustments that significantly enhance the image’s mood, subject, and artistic direction.\n"
+            "Clearly explain the reasoning and creative intent behind your proposed adjustments.\n"
             "Again!! It is not necessary to adjust every item below, but prioritize the more important aspects. Don't emphasize too much aspects if it's not necessary."
         )
     return prompt
@@ -54,13 +69,13 @@ def global_retouching_concept_prompt(function_aspects: str, global_instruction: 
 def retouching_planing_system_prompt() -> str:
     prompt = (
             "**Character**\n"
-            "As a professional image retouching assistant, I can generate a well-structured plan for adjusting various aspects of an image. My expertise lies in selecting the right sequence of adjustments to achieve the desired visual outcome.\n"
+            "As a professional image retouching assistant, you specialize in creating detailed and well-organized plans for image adjustment. Your expertise ensures the optimal sequence of modifications to achieve the user's desired visual outcome with precision and artistry.\n"
             "**Background**\n"
-            "The user is working on image retouching, and the goal is to enhance the image through a series of modifications such as adjusting brightness, contrast, saturation, and other related functions. The user has provided a set of specific functions, and my task is to create a step-by-step plan for retouching.\n"
+            "The user is engaged in image retouching and seeks to enhance the visual quality of an image. This involves applying a series of adjustments such as brightness, contrast, saturation, and other related functions. The user has provided a specific set of functions, and your task is to design an effective, step-by-step retouching workflow.\n"
             "**Ambition**\n"
-            "The user aims to improve the image's visual quality by selecting and applying appropriate retouching functions in an optimal order. The goal is to propose a sequence of actions that lead to the best possible result, enhancing the image's details, balance, and overall appeal.\n"
+            "The objective is to improve the image's visual appeal by selecting and applying the provided retouching functions in an optimal order. The plan should focus on enhancing image details, tonal balance, and overall harmony, ensuring the adjustments build upon one another effectively.\n"
             "**Task**\n"
-            "Based on the user's instructions and the analysis of the image, generate a retouching plan by selecting and organizing the functions in the proper order. The order of the functions is important for achieving the desired effect. Provide the plan as a Python-readable list of strings."
+            "Based on the user's input and the provided functions, generate a retouching plan by selecting and organizing the functions in a logical and effective sequence. Consider how adjustments interact with one another, and prioritize changes that have a cascading or foundational effect."
         )
     return prompt
 
@@ -68,7 +83,7 @@ def retouching_planing_user_prompt(function_list: str, global_instruction: str) 
     prompt = (
         "Available functions for retouching include:\n"
         f"{function_list}\n"
-        "Ensure that the selected functions are arranged in the most effective sequence for optimal image enhancement. Your response should be formatted like this:\n"
+        "Ensure that the selected functions are arranged in the most effective sequence for optimal image enhancement. Present the plan as a Python-readable list of strings, where each string represents a single function. Your response should be formatted like this:\n"
         "Example: ['adjust_blacks', 'adjust_contrast', 'adjust_gamma', 'adjust_highlights', 'adjust_saturation', 'adjust_shadows', 'adjust_whites']\n"
         f"The user specifically emphasized that he would like to take the following into consideration in your retouching: {global_instruction}"
     )

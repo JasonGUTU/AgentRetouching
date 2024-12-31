@@ -28,3 +28,4 @@ dist/
 # Test images
 test-images/
 test-output/
+test-output-old/
