@@ -3,6 +3,8 @@ from typing import List, Callable
 import numpy as np
 from Levenshtein import distance
 
+import pyautogui
+
 import cv2
 import matplotlib.pyplot as plt
 from io import BytesIO
@@ -22,18 +24,18 @@ def tool_doc(description):
 
 class ImageProcessingToolBoxes:
 
-    def __init__(self, image_path, output_dir_name, debug=False, save_high_resolution=True, extension_name="png"):
+    def __init__(self, image_path, output_dir_name, debug=False, save_high_resolution=True, save_numpy_as_hr=True, extension_name="png"):
         self.output_dir_path = output_dir_name
         self.extension_name = extension_name
         self.save_high_resolution = save_high_resolution
-
+        self.save_numpy_as_hr = save_numpy_as_hr
+        
         if not os.path.exists(output_dir_name):
             os.makedirs(output_dir_name)
+        elif debug:
+            pass
         else:
-            if debug:
-                pass
-            else:
-                raise FileExistsError(f"The directory '{output_dir_name}' already exists.")
+            raise FileExistsError(f"The directory '{output_dir_name}' already exists.")
 
         self.image_paths = []  # List of image paths for OpenAI to view
         self.hr_image_paths = []  # List of high-resolution image paths
@@ -44,11 +46,11 @@ class ImageProcessingToolBoxes:
 
         self.processing_plan = []
 
-        self.log_file_path = os.path.join(self.output_dir_path, "processing_log.txt")
-        self.image_name, _ = os.path.splitext(os.path.basename(image_path))
-
         self.plan_status = ""
         self.satisfactory_status = False
+
+        self.log_file_path = os.path.join(self.output_dir_path, "processing_log.txt")
+        self.image_name, _ = os.path.splitext(os.path.basename(image_path))
 
         # Load original image and downsample
         img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)

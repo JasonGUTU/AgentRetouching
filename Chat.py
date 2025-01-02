@@ -8,18 +8,6 @@ import openai
 from Utils import base64_encode_image
 
 
-# class AgentClientLangChain:
-#     def __init__(self, api_key, model="gpt-4o-2024-08-06", toolbox_instance=None, debug=False):
-#         self.llm = ChatOpenAI(model=model, api_key=api_key)
-#         self.model = model
-#         self.debug = debug
-#         self.toolbox_instance = toolbox_instance
-#         self.total_tokens = []
-
-#     def create_chat_completion(self, messages, tools, tool_choice="required", model=None, max_tokens=None):
-        
-
-
 class AgentClient:
     def __init__(self, api_key, model="gpt-4o-2024-11-20", toolbox_instance=None, debug=False):
         self.client = openai.OpenAI(api_key=api_key)
@@ -81,7 +69,7 @@ class AgentClient:
         else:
             return json.loads(completion.choices[0].message.tool_calls[0].function.arguments)["response"]
         
-    def agent_get_plan(self, system_prompt, user_prompt=None, provide_image=True, history_messages=True, run_tool=True):
+    def agent_get_plan(self, system_prompt, user_prompt=None, provide_image=True, history_messages=False, run_tool=True):
         """
         Handles the interaction between the agent and the user to get a processing plan.
         """
@@ -89,6 +77,20 @@ class AgentClient:
         past_messages = self.toolbox_instance.history_messages if history_messages else None
         messages = self.build_messages(system_prompt, user_prompt, image_path, past_messages)
         completion = self.create_chat_completion(messages, self.toolbox_instance.get_tool_docs([self.toolbox_instance.func_to_get_plan]), tool_choice="required")
+
+        if run_tool:
+            self.parse_function_call(completion, self.toolbox_instance)
+        else:
+            return completion
+        
+    def agent_get_plan_GUI(self, system_prompt, user_prompt=None, provide_image=True, history_messages=True, run_tool=True):
+        """
+        Handles the interaction between the agent and the user to get a processing plan.
+        """
+        image_path = self.toolbox_instance.get_current_image_path() if provide_image else None
+        past_messages = self.toolbox_instance.history_messages if history_messages else None
+        messages = self.build_messages(system_prompt, user_prompt, image_path, past_messages)
+        completion = self.create_chat_completion(messages, self.toolbox_instance.get_tool_docs([self.toolbox_instance.func_to_get_plan_GUI]), tool_choice="required")
 
         if run_tool:
             self.parse_function_call(completion, self.toolbox_instance)
@@ -115,7 +117,7 @@ class AgentClient:
         """
 
         if combine_image and provide_image:
-            image_path_old, image_path_new = self.toolbox_instance.get_current_image_path(image_number=2)
+            image_path_old, image_path_new = self.toolbox_instance.image_paths[0], self.toolbox_instance.get_current_image_path()
             with Image.open(image_path_old) as img1, Image.open(image_path_new) as img2:
                 height = min(img1.size[1], img2.size[1])
                 width1 = int(img1.size[0] * height / img1.size[1])
@@ -138,7 +140,7 @@ class AgentClient:
 
         past_messages = self.toolbox_instance.history_messages if history_messages else None
         messages = self.build_messages(system_prompt, user_prompt, image_path_new, past_messages)
-        completion = self.create_chat_completion(messages, self.toolbox_instance.get_tool_docs([self.toolbox_instance.satisfactory, self.toolbox_instance.undo_step]), tool_choice="required")
+        completion = self.create_chat_completion(messages, self.toolbox_instance.get_tool_docs([self.toolbox_instance.satisfactory]), tool_choice="required")
 
         if run_tool:
             self.parse_function_call(completion, self.toolbox_instance)
