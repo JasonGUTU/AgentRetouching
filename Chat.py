@@ -68,7 +68,16 @@ class AgentClient:
             return json.loads(completion.choices[0].message.tool_calls[0].function.arguments)["response"]
         else:
             return json.loads(completion.choices[0].message.tool_calls[0].function.arguments)["response"]
-        
+    
+    def LLM_interaction(self, system_prompt, user_prompt=None, image_path=None):
+        messages = self.build_messages(system_prompt, user_prompt, image_path)
+        params = {
+            "model": self.model,
+            "messages": messages,
+        }
+        completion = self.client.chat.completions.create(**params)
+        return completion.choices[0].message.content
+    
     def agent_get_plan(self, system_prompt, user_prompt=None, provide_image=True, history_messages=False, run_tool=True):
         """
         Handles the interaction between the agent and the user to get a processing plan.

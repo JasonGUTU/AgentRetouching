@@ -17,9 +17,56 @@ VALUE_RANGE = {
     "Whites": (-100, 100),
     "Blacks": (-100, 100),
     "Temp": (-100, 100),
-    "Tint": (-100, 100),
+    "Tint": (-150, 150),
     "Vibrance": (-100, 100),
     "Saturation": (-100, 100),
+}
+
+COLOR_VALUE_RANGE = {
+    "Hue": (-100, 100),
+    "Saturation": (-100, 100),
+    "Luminance": (-100, 100),
+}
+
+Toolbox_Config_Template = {
+    "canva_topleft": (100, 100), 
+    "canva_bottomright": (100, 100),
+    "pannel_topleft": (100, 100),  # Scroll Up
+    "pannel_bottomright": (100, 100),  # Scroll Up
+    "histogram_topleft": (100, 100),  # Scroll Up
+    "histogram_bottomright": (100, 100),  # Scroll Up
+    "Temp_input_position": (100, 100),  # Scroll Up
+    "controller_image_path": "",  # Scroll Up
+    "color_controller_image_path": "",  # Scroll Up
+    "adjustment_position": {  # Scroll Up
+        "Exposure": [(100, 100), (100, 100), (100, 100)],
+        "Contrast": [(100, 100), (100, 100), (100, 100)],
+        "Highlights": [(100, 100), (100, 100), (100, 100)],
+        "Shadows": [(100, 100), (100, 100), (100, 100)],
+        "Whites": [(100, 100), (100, 100), (100, 100)],
+        "Blacks": [(100, 100), (100, 100), (100, 100)],
+        "Temp": [(100, 100), (100, 100), (100, 100)],
+        "Tint": [(100, 100), (100, 100), (100, 100)],
+        "Vibrance": [(100, 100), (100, 100), (100, 100)],
+        "Saturation": [(100, 100), (100, 100), (100, 100)],
+    },
+    "open_color_adjustment_button_position": (100, 100),  # Scroll Up
+    # Color adjustment select positions for different colors
+    "color_adjustment_select_position_Red": (100, 100),
+    "color_adjustment_select_position_Orange": (100, 100), 
+    "color_adjustment_select_position_Yellow": (100, 100),
+    "color_adjustment_select_position_Green": (100, 100),
+    "color_adjustment_select_position_Cyan": (100, 100),
+    "color_adjustment_select_position_Blue": (100, 100),
+    "color_adjustment_select_position_Purple": (100, 100),
+    "color_adjustment_select_position_Magenta": (100, 100),
+    "color_adjustment_position": {  # Scroll Down
+        "Hue": [(100, 100), (100, 100), (100, 100)],
+        "Saturation": [(100, 100), (100, 100), (100, 100)],
+        "Luminance": [(100, 100), (100, 100), (100, 100)],
+    },
+    "HIDPI": 2,
+    "background_color": [26, 26, 26]
 }
 
 
@@ -30,7 +77,7 @@ test_parameters_1 = {
         "Shadows": 0,
         "Whites": 0,
         "Blacks": 0,
-        "Temp": 0,
+        "Temp": 5000,
         "Tint": 0,
         "Vibrance": 0,
         "Saturation": 0,
@@ -43,7 +90,7 @@ test_parameters_2 = {
     "Shadows": 70,
     "Whites": 70,
     "Blacks": 70,
-    "Temp": -70,
+    "Temp": 3000,
     "Tint": -70,
     "Vibrance": -70,
     "Saturation": -70,
@@ -56,11 +103,59 @@ test_parameters_3 = {
     "Shadows": -70,
     "Whites": -70,
     "Blacks": -70,
-    "Temp": 70,
+    "Temp": 10000,
     "Tint": 70,
     "Vibrance": 70,
     "Saturation": 70,
 }
+
+color_test_parameters_1 = {
+    "Red": [0, 0, 0],
+    "Orange": [0, 0, 0],
+    "Yellow": [0, 0, 0],
+    "Green": [0, 0, 0],
+    "Cyan": [0, 0, 0],
+    "Blue": [0, 0, 0],
+    "Purple": [0, 0, 0],
+    "Magenta": [0, 0, 0],
+}
+
+color_test_parameters_2 = {
+    "Red": [-100, -100, -100],
+    "Orange": [-100, -100, -100],
+    "Yellow": [-100, -100, -100],
+    "Green": [-100, -100, -100],
+    "Cyan": [-100, -100, -100],
+    "Blue": [-100, -100, -100],
+    "Purple": [-100, -100, -100],
+    "Magenta": [-100, -100, -100],
+}
+
+color_test_parameters_3 = {
+    "Red": [100, 100, 100],
+    "Orange": [100, 100, 100],
+    "Yellow": [100, 100, 100],
+    "Green": [100, 100, 100],
+    "Cyan": [100, 100, 100],
+    "Blue": [100, 100, 100],
+    "Purple": [100, 100, 100],
+    "Magenta": [100, 100, 100],
+}
+
+
+def skip_legacy_setting_button(button_image_path, gui_config):
+    update_setting_image = button_image_path
+    try:
+        update_setting_location = pyautogui.locateOnScreen(update_setting_image, confidence=0.97)
+        print(f"Find Button: {update_setting_location}")
+        x, y = pyautogui.center(update_setting_location)
+        x_scaled = x / gui_config['HIDPI']
+        y_scaled = y / gui_config['HIDPI']
+
+        pyautogui.click(x_scaled, y_scaled)
+        print("Update Legacy Setting")
+    except:
+        print("No Update Legacy Setting Button")
 
 
 def get_GUI_preview_image(gui_config, screenshot=None, save_path='cropped_image.jpg', tolerance=10):
@@ -151,6 +246,41 @@ def get_GUI_histo_image(gui_config, screenshot=None, save_path='cropped_histo.jp
     cv2.imwrite(save_path, cv2_image)
 
 
+def set_color_slider_positions(target_parameters, GUI_config):
+    """
+    Automatically move the mouse and click on color adjustment sliders based on target parameters.
+
+    Args:
+        target_parameters (dict): Dictionary containing target values for color sliders.
+        GUI_config (dict): GUI configuration containing color adjustment positions and HIDPI scaling.
+    """
+    pyautogui.moveTo(GUI_config['open_color_adjustment_button_position'], duration=0.1)
+    pyautogui.click()
+    pannel_topleft = GUI_config['pannel_topleft']
+    pannel_bottomright = GUI_config['pannel_bottomright']
+    pyautogui.moveTo((pannel_topleft[0] + pannel_bottomright[0]) // 2, (pannel_topleft[1] + pannel_bottomright[1]) // 2, duration=0.05)
+    pyautogui.scroll(-1000)
+
+    for color, value_list in target_parameters.items():
+        pyautogui.moveTo(GUI_config['color_adjustment_select_position_' + color], duration=0.1)
+        pyautogui.click()
+        for slider, value in zip(["Hue", "Saturation", "Luminance"], value_list):
+            x_pos, y_pos = get_color_slider_position(slider, value, GUI_config)
+            if value < 0:
+                x_start, y_start = get_color_slider_position(slider, value + COLOR_VALUE_RANGE[slider][1] * 0.4, GUI_config)
+            else:
+                x_start, y_start = get_color_slider_position(slider, value - COLOR_VALUE_RANGE[slider][1] * 0.4, GUI_config)
+            pyautogui.moveTo(x_start, y_start, duration=0.1)
+            pyautogui.dragTo(x_pos, y_pos, duration=0.1, button='left')
+            time.sleep(0.1)  # Small delay to ensure smooth execution
+
+    pyautogui.moveTo((pannel_topleft[0] + pannel_bottomright[0]) // 2, (pannel_topleft[1] + pannel_bottomright[1]) // 2, duration=0.05)
+    pyautogui.scroll(1000)
+    pyautogui.moveTo(GUI_config['open_color_adjustment_button_position'], duration=0.1)
+    pyautogui.click()
+    time.sleep(0.05)
+
+
 def set_slider_positions(target_parameters, GUI_config):
     """
     Automatically move the mouse and click on slider positions based on target parameters.
@@ -159,13 +289,56 @@ def set_slider_positions(target_parameters, GUI_config):
         target_parameters (dict): Dictionary containing target values for sliders.
         GUI_config (dict): GUI configuration containing slider positions and HIDPI scaling.
     """
+    pannel_topleft = GUI_config['pannel_topleft']
+    pannel_bottomright = GUI_config['pannel_bottomright']
+    pyautogui.moveTo((pannel_topleft[0] + pannel_bottomright[0]) // 2, (pannel_topleft[1] + pannel_bottomright[1]) // 2, duration=0.05)
+    pyautogui.scroll(500)
     for slider, value in target_parameters.items():
         if slider in GUI_config['adjustment_position']:
-            x_pos, y_pos = get_slider_position(slider, value, GUI_config)
-            # print(f"Setting {slider} to {value} at position ({x_pos}, {y_pos})")
-            pyautogui.moveTo(x_pos, y_pos, duration=0.2)
-            pyautogui.click()
-            time.sleep(0.1)  # Small delay to ensure smooth execution
+            if slider != "Temp":
+                x_pos, y_pos = get_slider_position(slider, value, GUI_config)
+                if value < 0:
+                    x_start, y_start = get_slider_position(slider, value + VALUE_RANGE[slider][1] * 0.4, GUI_config)
+                else:
+                    x_start, y_start = get_slider_position(slider, value - VALUE_RANGE[slider][1] * 0.4, GUI_config)
+                # print(f"Setting {slider} to {value} at position ({x_pos}, {y_pos})")
+                pyautogui.moveTo(x_start, y_start, duration=0.1)
+                pyautogui.dragTo(x_pos, y_pos, duration=0.1, button='left')
+                time.sleep(0.05)  # Small delay to ensure smooth execution
+            if slider == "Temp":
+                x_pos, y_pos = GUI_config['Temp_input_position']
+                pyautogui.moveTo(x_pos, y_pos, duration=0.1)
+                time.sleep(0.05)
+                pyautogui.click()
+                time.sleep(0.05)
+                pyautogui.write(str(value), interval=0.05) 
+                time.sleep(0.05)
+                pyautogui.press('enter')
+                time.sleep(0.05)
+
+
+def get_color_slider_position(slider, value, GUI_config):
+    """
+    Automatically move the mouse and click on color adjustment sliders based on target parameters.
+
+    Args:
+        color (str): Name of the color.
+        value (list): List of target values for the color sliders.
+        GUI_config (dict): GUI configuration containing color adjustment positions and HIDPI scaling.
+    """
+    left, middle, right = GUI_config['color_adjustment_position'][slider]
+    min_val, max_val = COLOR_VALUE_RANGE[slider]
+
+    if value <= 0:
+        t = (value - min_val) / (0 - min_val)
+        x_pos = left[0] + t * (middle[0] - left[0])
+    else:
+        t = (value - 0) / (max_val - 0)
+        x_pos = middle[0] + t * (right[0] - middle[0])
+
+    x_pos = x_pos / GUI_config['HIDPI']
+    y_pos = middle[1] / GUI_config['HIDPI']
+    return int(x_pos), int(y_pos)
 
 
 def get_slider_position(slider, value, GUI_config):
@@ -227,7 +400,7 @@ def get_current_parameters(GUI_config):
     return current_values
 
 
-def create_toolbox_config_template(button_image, HDPI, background_color, pannel_and_histogram_area, slider_positions):
+def create_toolbox_config_template(button_image, color_button_image, HDPI, background_color, pannel_and_histogram_area, slider_positions, color_adjustment_positions):
     """
     Creates a Toolbox Config Template with the provided parameters.
 
@@ -248,12 +421,78 @@ def create_toolbox_config_template(button_image, HDPI, background_color, pannel_
         "histogram_topleft": pannel_and_histogram_area["histogram_topleft"],
         "histogram_bottomright": pannel_and_histogram_area["histogram_bottomright"],
         "controller_image_path": button_image,
+        "color_controller_image_path": color_button_image,
         "adjustment_position": slider_positions,
+        "color_adjustment_position": color_adjustment_positions,
         "HIDPI": HDPI,
-        "background_color": background_color
+        "background_color": background_color,
+        "Temp_input_position": pannel_and_histogram_area["Temp_input_position"],
+        "open_color_adjustment_button_position": pannel_and_histogram_area["open_color_adjustment_button_position"],
+        "color_adjustment_select_position_Red": pannel_and_histogram_area["color_adjustment_select_position_Red"],
+        "color_adjustment_select_position_Orange": pannel_and_histogram_area["color_adjustment_select_position_Orange"],
+        "color_adjustment_select_position_Yellow": pannel_and_histogram_area["color_adjustment_select_position_Yellow"],
+        "color_adjustment_select_position_Green": pannel_and_histogram_area["color_adjustment_select_position_Green"],
+        "color_adjustment_select_position_Cyan": pannel_and_histogram_area["color_adjustment_select_position_Cyan"],
+        "color_adjustment_select_position_Blue": pannel_and_histogram_area["color_adjustment_select_position_Blue"],
+        "color_adjustment_select_position_Purple": pannel_and_histogram_area["color_adjustment_select_position_Purple"],
+        "color_adjustment_select_position_Magenta": pannel_and_histogram_area["color_adjustment_select_position_Magenta"],
     }
 
     return toolbox_config_template
+
+
+def record_color_slider_positions(slider_image):
+    """
+    Records the positions of color adjustment sliders in the middle, far left, and far right positions.
+    The function scrolls down to the bottom and captures the bottom-most three slider positions for each adjustment.
+
+    Args:
+        slider_image (str): Path to the slider image.
+
+    Returns:
+        dict: A dictionary containing the positions of each color adjustment slider.
+    """
+    adjustments = ["Hue", "Saturation", "Luminance"]
+    color_adjustment_positions = {adjustment: [None, None, None] for adjustment in adjustments}
+
+    print("Scrolling to the bottom of the color adjustment panel...")
+
+    print("Ensure all sliders are in the middle position.")
+    input("Press Enter after confirming all sliders are set to the middle position...")
+
+    print("Recording middle positions...")
+    for i, adjustment in enumerate(adjustments):
+        all_positions = list(pyautogui.locateAllOnScreen(slider_image))
+        if len(all_positions) >= 3:
+            sorted_positions = sorted(all_positions, key=lambda pos: pos.top, reverse=True)
+            color_adjustment_positions[adjustment][1] = (int(sorted_positions[2-i].left + sorted_positions[2-i].width / 2), int(sorted_positions[2-i].top + sorted_positions[2-i].height / 2))
+
+    print("Move all sliders to the far left position.")
+    input("Press Enter after adjusting all sliders to the far left...")
+
+    print("Recording far left positions...")
+    for i, adjustment in enumerate(adjustments):
+        all_positions = list(pyautogui.locateAllOnScreen(slider_image))
+        if len(all_positions) >= 3:
+            sorted_positions = sorted(all_positions, key=lambda pos: pos.top, reverse=True)
+            color_adjustment_positions[adjustment][0] = (int(sorted_positions[2-i].left + sorted_positions[2-i].width / 2), int(sorted_positions[2-i].top + sorted_positions[2-i].height / 2))
+
+
+    print("Move all sliders to the far right position.")
+    input("Press Enter after adjusting all sliders to the far right...")
+
+    print("Recording far right positions...")
+    for i, adjustment in enumerate(adjustments):
+        all_positions = list(pyautogui.locateAllOnScreen(slider_image))
+        if len(all_positions) >= 3:
+            sorted_positions = sorted(all_positions, key=lambda pos: pos.top, reverse=True)
+            color_adjustment_positions[adjustment][2] = (int(sorted_positions[2-i].left + sorted_positions[2-i].width / 2), int(sorted_positions[2-i].top + sorted_positions[2-i].height / 2))
+
+    print("Recording complete. Final color adjustment positions:")
+    for adjustment, positions in color_adjustment_positions.items():
+        print(f"{adjustment}: {positions}")
+
+    return color_adjustment_positions
 
 
 def record_slider_positions(slider_image):
@@ -271,6 +510,8 @@ def record_slider_positions(slider_image):
     ]
 
     slider_positions = {slider: [None, None, None] for slider in sliders}
+
+    print("Please scroll up to the top:")
 
     print("Ensure all sliders are in the middle position.")
     input("Press Enter after confirming all sliders are set to the middle position...")
@@ -308,13 +549,14 @@ def record_slider_positions(slider_image):
 
 def set_calibration_points():
     """
-    Guide users to right-click on 4 points on the screen, corresponding to:
-    - canva_topleft
-    - canva_bottomright
-    - pannel_topleft
-    - pannel_bottomright
-    - histogram_topleft
-    - histogram_bottomright
+    Guide users to right-click on specific points on the screen, corresponding to:
+    - Canva: topleft and bottomright
+    - Panel: topleft and bottomright
+    - Histogram: topleft and bottomright
+    - Additional positions: Temp input, open color adjustment button
+
+    After recording the first set of points, prompts the user to open the color adjustment panel,
+    scroll to the bottom, and record positions for each color adjustment option.
 
     Returns a dictionary containing these coordinates.
     """
@@ -324,10 +566,24 @@ def set_calibration_points():
         "pannel_topleft": None,
         "pannel_bottomright": None,
         "histogram_topleft": None,
-        "histogram_bottomright": None
+        "histogram_bottomright": None,
+        "Temp_input_position": None,
+        "open_color_adjustment_button_position": None,
+    }
+
+    scroll_down_points = {
+        "color_adjustment_select_position_Red": None,
+        "color_adjustment_select_position_Orange": None,
+        "color_adjustment_select_position_Yellow": None,
+        "color_adjustment_select_position_Green": None,
+        "color_adjustment_select_position_Cyan": None,
+        "color_adjustment_select_position_Blue": None,
+        "color_adjustment_select_position_Purple": None,
+        "color_adjustment_select_position_Magenta": None,
     }
 
     point_names = list(points.keys())
+    scroll_point_names = list(scroll_down_points.keys())
     index = 0
 
     print("Please right-click on the following positions on the screen in order:")
@@ -337,20 +593,36 @@ def set_calibration_points():
     def on_click(x, y, button, pressed):
         nonlocal index
         if pressed and button == mouse.Button.right:
-            # Save current click position with rounded coordinates
-            points[point_names[index]] = (round(x), round(y))
-            print(f"Recorded {point_names[index]}: {round(x), round(y)}")
-            index += 1
+            if index < len(point_names):
+                # Save current click position with rounded coordinates for initial points
+                points[point_names[index]] = (round(x), round(y))
+                print(f"Recorded {point_names[index]}: {(round(x), round(y))}")
+                index += 1
 
-            # Check if all points have been recorded
-            if index >= len(point_names):
-                print("All points have been recorded!")
-                return False  # Stop listener
+                # Check if all points in the first set have been recorded
+                if index == len(point_names):
+                    print("\nAll initial points have been recorded!")
+                    print("Please open the color adjustment panel, scroll down to the bottom, and right-click on the following positions:")
+                    for scroll_name in scroll_point_names:
+                        print(f" - {scroll_name}")
+
+            elif index - len(point_names) < len(scroll_point_names):
+                # Save current click position with rounded coordinates for scroll down points
+                scroll_index = index - len(point_names)
+                scroll_down_points[scroll_point_names[scroll_index]] = (round(x), round(y))
+                print(f"Recorded {scroll_point_names[scroll_index]}: {(round(x), round(y))}")
+                index += 1
+
+                # Check if all scroll down points have been recorded
+                if scroll_index + 1 == len(scroll_point_names):
+                    print("\nAll scroll-down points have been recorded!")
+                    return False  # Stop listener
 
     # Start mouse listener
     with mouse.Listener(on_click=on_click) as listener:
         listener.join()
 
-    print("Final recorded points:")
+    # Merge the two dictionaries into one result
+    final_points = {**points, **scroll_down_points}
 
-    return points
+    return final_points
