@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>图片对比工具</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .control-panel {
+            margin-bottom: 20px;
+        }
+        .folder-list {
+            margin: 10px 0;
+        }
+        .folder-item {
+            margin: 5px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: #f4f4f4;
+        }
+        .image-cell {
+            padding: 5px;
+        }
+        .image-cell img {
+            max-width: 100%;
+            height: auto;
+        }
+        .size-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        button {
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+        .preview-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+        }
+        .preview-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            max-width: 90%;
+            max-height: 90%;
+        }
+        .preview-content img {
+            max-width: 100%;
+            max-height: 90vh;
+        }
+        .close-preview {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            color: white;
+            font-size: 30px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="control-panel">
+        <h2>图片对比工具</h2>
+        <button onclick="addFolder()">添加文件夹</button>
+        <div class="size-control">
+            <label>图片大小:</label>
+            <input type="range" id="sizeSlider" min="100" max="800" value="300" oninput="updateImageSize(this.value)">
+            <span id="sizeValue">300px</span>
+        </div>
+        <div id="folderList" class="folder-list"></div>
+    </div>
+    
+    <table id="comparisonTable">
+        <thead>
+            <tr>
+                <th>文件名</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <div id="previewModal" class="preview-modal">
+        <span class="close-preview" onclick="closePreview()">&times;</span>
+        <div class="preview-content">
+            <img id="previewImage" src="" alt="预览">
+        </div>
+    </div>
+
+    <script>
+        let folders = [];
+        let currentImageSize = 300;
+        
+        // 添加文件夹
+        async function addFolder() {
+            try {
+                // 创建文件选择器
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.webkitdirectory = true;
+                input.multiple = true;
+                
+                input.onchange = function(e) {
+                    const files = Array.from(e.target.files);
+                    const folderName = files[0]?.webkitRelativePath.split('/')[0] || '未命名文件夹';
+                    
+                    // 过滤图片文件
+                    const imageFiles = files.filter(file => 
+                        file.type.startsWith('image/') ||
+                        file.name.match(/\.(jpg|jpeg|png|gif|bmp|webp)$/i)
+                    );
+                    
+                    folders.push({
+                        name: folderName,
+                        files: imageFiles
+                    });
+                    
+                    updateFolderList();
+                    updateTable();
+                };
+                
+                input.click();
+            } catch (error) {
+                console.error('Error adding folder:', error);
+                alert('添加文件夹失败: ' + error.message);
+            }
+        }
+        
+        // 更新文件夹列表显示
+        function updateFolderList() {
+            const folderList = document.getElementById('folderList');
+            folderList.innerHTML = folders.map((folder, index) => `
+                <div class="folder-item">
+                    <input type="text" value="${folder.name}" 
+                           onchange="updateFolderName(${index}, this.value)">
+                    <button onclick="removeFolder(${index})">删除</button>
+                    <span>(${folder.files.length} 个图片)</span>
+                </div>
+            `).join('');
+            
+            // 更新表格头部
+            const headerRow = document.querySelector('#comparisonTable thead tr');
+            headerRow.innerHTML = '<th>文件名</th>' + 
+                folders.map(folder => `<th>${folder.name}</th>`).join('');
+        }
+        
+        // 更新文件夹名称
+        function updateFolderName(index, newName) {
+            folders[index].name = newName;
+            updateFolderList();
+        }
+        
+        // 删除文件夹
+        function removeFolder(index) {
+            folders.splice(index, 1);
+            updateFolderList();
+            updateTable();
+        }
+        
+        // 更新图片大小
+        function updateImageSize(size) {
+            currentImageSize = size;
+            document.getElementById('sizeValue').textContent = size + 'px';
+            updateTable();
+        }
+        
+        // 更新表格内容
+        function updateTable() {
+            if (folders.length === 0) {
+                document.querySelector('#comparisonTable tbody').innerHTML = '';
+                return;
+            }
+            
+            // 收集所有唯一的文件名
+            const allFileNames = new Set();
+            folders.forEach(folder => {
+                folder.files.forEach(file => {
+                    allFileNames.add(file.name);
+                });
+            });
+            
+            // 创建表格内容
+            const tbody = document.querySelector('#comparisonTable tbody');
+            tbody.innerHTML = Array.from(allFileNames).map(fileName => {
+                const row = `
+                    <tr>
+                        <td>${fileName}</td>
+                        ${folders.map(folder => {
+                            const file = folder.files.find(f => f.name === fileName);
+                            if (file) {
+                                const url = URL.createObjectURL(file);
+                                return `
+                                    <td class="image-cell">
+                                        <img src="${url}" 
+                                             alt="${fileName}"
+                                             style="max-width: ${currentImageSize}px; max-height: ${currentImageSize}px;"
+                                             onclick="showPreview('${url}')">
+                                    </td>
+                                `;
+                            }
+                            return '<td>-</td>';
+                        }).join('')}
+                    </tr>
+                `;
+                return row;
+            }).join('');
+        }
+        
+        // 显示图片预览
+        function showPreview(url) {
+            const modal = document.getElementById('previewModal');
+            const previewImage = document.getElementById('previewImage');
+            previewImage.src = url;
+            modal.style.display = 'block';
+        }
+        
+        // 关闭预览
+        function closePreview() {
+            const modal = document.getElementById('previewModal');
+            modal.style.display = 'none';
+        }
+        
+        // 点击预览模态框背景关闭预览
+        document.getElementById('previewModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closePreview();
+            }
+        });
+    </script>
+</body>
+</html>
