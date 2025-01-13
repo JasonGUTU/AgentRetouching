@@ -35,7 +35,7 @@ class AgentClient:
             print(f"Parameters: {json.dumps(params, indent=2, ensure_ascii=False)}")
 
         return completion
-    
+
     def agent_interaction(self, system_prompt, user_prompt=None, provide_image=True, history_messages=True, run_tool=True, histo_image=False):
         """
         Handles the interaction between the agent and the user.

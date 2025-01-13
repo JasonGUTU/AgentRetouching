@@ -1,13 +1,24 @@
 photo_editing_global_styles = {
-    "popular_style": [
-        "Make the photo to be accepted by the public as much as possible.",
-    ],
     "artistic_emphasis": [
         "Enhance the image with a focus on visual storytelling and creative expression.",
         "Prioritize unique contrasts, unexpected color dynamics, and harmonious composition to evoke emotion and intrigue.",
         "Allow for experimentation with light, shadow, and texture to create depth and resonance.",
         "Avoid overcorrection that removes character; embrace imperfections that add authenticity and artistic depth.",
         "Use subtle or bold adjustments as needed to guide the viewer's focus and elevate the artistic impact."
+    ],
+    "popular_style": [
+        "Create an appealing and balanced image that resonates with a wide audience.",
+        "Prioritize vibrant colors, clear contrasts, and a harmonious composition to ensure visual appeal.",
+        "Maintain a natural yet polished appearance, avoiding extreme adjustments that might overwhelm viewers.",
+        "Enhance details without making the image appear artificial, ensuring smooth textures and pleasing sharpness.",
+        "Utilize soft enhancements to draw attention to key subjects, fostering a comfortable and engaging viewing experience."
+    ],
+    "emotive_resonance": [
+        "Focus on evoking strong emotions and deep connections through dramatic visual elements.",
+        "Emphasize bold contrasts, unique color palettes, and dynamic compositions to amplify emotional intensity.",
+        "Allow shadows and highlights to play a pivotal role in creating mood and tension.",
+        "Lean into imperfections or abstract elements that add rawness and authenticity to the visual story.",
+        "Use daring and unconventional adjustments to break norms, heighten drama, and make a lasting impression."
     ],
     "natural_look": [
         "Make the photo look as natural and realistic as possible, with minimal adjustments.",

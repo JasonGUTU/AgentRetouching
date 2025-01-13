@@ -304,17 +304,17 @@ def set_slider_positions(target_parameters, GUI_config):
                 # print(f"Setting {slider} to {value} at position ({x_pos}, {y_pos})")
                 pyautogui.moveTo(x_start, y_start, duration=0.1)
                 pyautogui.dragTo(x_pos, y_pos, duration=0.1, button='left')
-                time.sleep(0.05)  # Small delay to ensure smooth execution
+                time.sleep(0.1)  # Small delay to ensure smooth execution
             if slider == "Temp":
                 x_pos, y_pos = GUI_config['Temp_input_position']
                 pyautogui.moveTo(x_pos, y_pos, duration=0.1)
-                time.sleep(0.05)
+                time.sleep(0.1)
                 pyautogui.click()
-                time.sleep(0.05)
-                pyautogui.write(str(value), interval=0.05) 
-                time.sleep(0.05)
+                time.sleep(0.1)
+                pyautogui.write(str(value), interval=0.1) 
+                time.sleep(0.1)
                 pyautogui.press('enter')
-                time.sleep(0.05)
+                time.sleep(0.1)
 
 
 def get_color_slider_position(slider, value, GUI_config):

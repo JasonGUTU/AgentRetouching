@@ -1,0 +1,260 @@
+{
+    "canva_topleft": [
+        891,
+        118
+    ],
+    "canva_bottomright": [
+        1590,
+        910
+    ],
+    "pannel_topleft": [
+        1602,
+        384
+    ],
+    "pannel_bottomright": [
+        1854,
+        998
+    ],
+    "histogram_topleft": [
+        1593,
+        80
+    ],
+    "histogram_bottomright": [
+        1862,
+        191
+    ],
+    "controller_image_path": "/Users/jinjingu/Documents/Projects/AgentRetouching/button.png",
+    "color_controller_image_path": "/Users/jinjingu/Documents/Projects/AgentRetouching/color-button.png",
+    "adjustment_position": {
+        "Exposure": [
+            [
+                3246,
+                853
+            ],
+            [
+                3460,
+                853
+            ],
+            [
+                3674,
+                853
+            ]
+        ],
+        "Contrast": [
+            [
+                3246,
+                943
+            ],
+            [
+                3460,
+                943
+            ],
+            [
+                3674,
+                943
+            ]
+        ],
+        "Highlights": [
+            [
+                3246,
+                1033
+            ],
+            [
+                3460,
+                1033
+            ],
+            [
+                3674,
+                1033
+            ]
+        ],
+        "Shadows": [
+            [
+                3246,
+                1123
+            ],
+            [
+                3460,
+                1123
+            ],
+            [
+                3674,
+                1123
+            ]
+        ],
+        "Whites": [
+            [
+                3246,
+                1213
+            ],
+            [
+                3460,
+                1213
+            ],
+            [
+                3674,
+                1213
+            ]
+        ],
+        "Blacks": [
+            [
+                3246,
+                1303
+            ],
+            [
+                3460,
+                1303
+            ],
+            [
+                3674,
+                1303
+            ]
+        ],
+        "Temp": [
+            [
+                3246,
+                1681
+            ],
+            [
+                3460,
+                1681
+            ],
+            [
+                3674,
+                1681
+            ]
+        ],
+        "Tint": [
+            [
+                3246,
+                1771
+            ],
+            [
+                3460,
+                1771
+            ],
+            [
+                3674,
+                1771
+            ]
+        ],
+        "Vibrance": [
+            [
+                3246,
+                1861
+            ],
+            [
+                3460,
+                1861
+            ],
+            [
+                3674,
+                1861
+            ]
+        ],
+        "Saturation": [
+            [
+                3246,
+                1951
+            ],
+            [
+                3460,
+                1951
+            ],
+            [
+                3674,
+                1951
+            ]
+        ]
+    },
+    "color_adjustment_position": {
+        "Hue": [
+            [
+                3246,
+                1219
+            ],
+            [
+                3460,
+                1219
+            ],
+            [
+                3674,
+                1219
+            ]
+        ],
+        "Saturation": [
+            [
+                3246,
+                1309
+            ],
+            [
+                3460,
+                1309
+            ],
+            [
+                3674,
+                1309
+            ]
+        ],
+        "Luminance": [
+            [
+                3246,
+                1399
+            ],
+            [
+                3460,
+                1399
+            ],
+            [
+                3674,
+                1399
+            ]
+        ]
+    },
+    "HIDPI": 2,
+    "background_color": [
+        26,
+        26,
+        26
+    ],
+    "Temp_input_position": [
+        1828,
+        824
+    ],
+    "open_color_adjustment_button_position": [
+        1834,
+        1019
+    ],
+    "color_adjustment_select_position_Red": [
+        1630,
+        561
+    ],
+    "color_adjustment_select_position_Orange": [
+        1658,
+        561
+    ],
+    "color_adjustment_select_position_Yellow": [
+        1683,
+        561
+    ],
+    "color_adjustment_select_position_Green": [
+        1710,
+        561
+    ],
+    "color_adjustment_select_position_Cyan": [
+        1736,
+        561
+    ],
+    "color_adjustment_select_position_Blue": [
+        1763,
+        560
+    ],
+    "color_adjustment_select_position_Purple": [
+        1789,
+        561
+    ],
+    "color_adjustment_select_position_Magenta": [
+        1815,
+        560
+    ]
+}
